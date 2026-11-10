@@ -25,6 +25,8 @@ button{font:inherit;cursor:pointer}.btn{width:100%;padding:12px;border:0;border-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const sb=supabase.createClient('https://amyndifcebeffgsxwiec.supabase.co','sb_publishable_WFiJ2YoKmzQ_b1yh9-sR1Q_FvuGVRzP');
+let recovering=false;
+sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){recovering=true;newPwView()}});
 const $=s=>document.querySelector(s),v=s=>$(s).value.trim();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const show=h=>{$('#app').innerHTML=h};
@@ -34,11 +36,11 @@ const catInfo=k=>/^c\d+$/.test(k)?{category:'school',class_level:+k.slice(1)}:{c
 let me=null,profile={},isAdmin=false,sel=new Set(),loaded=[];
 
 function ui(tabk,body){
-  const T=[['mcq','➕ MCQ'],['imp','📥 ইমপোর্ট'],['exam','📝 পরীক্ষা'],['res','📊 ফলাফল']].concat(isAdmin?[['appr','✅ অনুমোদন'],['sub','📚 বিষয়'],['usr','👥 ইউজার']]:[['mine','🗂 আমার MCQ']]);
+  const T=[['mcq','➕ MCQ'],['imp','📥 ইমপোর্ট'],['exam','📝 পরীক্ষা'],['res','📊 ফলাফল']].concat(isAdmin?[['appr','✅ অনুমোদন'],['sub','📚 বিষয়'],['usr','👥 ইউজার'],['pay','💰 পেমেন্ট']]:[['mine','🗂 আমার MCQ']]);
   show(`<header><span>Sclzo ${isAdmin?'Admin':'Teacher'}</span><button class="link" style="color:#fff" onclick="logout()">লগআউট</button></header>
   <div class="tabs">${T.map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="go('${k}')">${n}</button>`).join('')}</div><main>${body}</main>`);
 }
-function go(k){({mcq:vMcq,imp:vImp,exam:vExam,res:vRes,appr:vAppr,sub:vSub,usr:vUsr,mine:vMine})[k]()}
+function go(k){({mcq:vMcq,imp:vImp,exam:vExam,res:vRes,appr:vAppr,sub:vSub,usr:vUsr,pay:vPay,mine:vMine})[k]()}
 
 /* subject picker */
 const pk=p=>`<select id="${p}cat" onchange="loadSubs('${p}')">${CATS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><select id="${p}sub" onchange="loadChs('${p}')"></select><select id="${p}ch"></select>`;
@@ -59,21 +61,40 @@ const STATUS=()=>isAdmin?{source:'main',status:'approved'}:{source:'teacher',sta
 
 /* ---------- AUTH ---------- */
 function loginView(){
-  show(`<header>Sclzo Admin / Teacher</header><main><div class="card"><h3>লগইন</h3><input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড"><button class="btn" onclick="doLogin()">লগইন</button></div></main>`);
+  show(`<header>Sclzo Admin / Teacher</header><main><div class="card"><h3>লগইন</h3><input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড"><button class="btn" onclick="doLogin()">লগইন</button><button class="link" onclick="resetPw()">পাসওয়ার্ড ভুলে গেছেন?</button></div></main>`);
 }
 async function doLogin(){
   const {error}=await sb.auth.signInWithPassword({email:v('#em'),password:$('#pw').value});
   if(error)return alert(error.message);boot();
 }
 async function logout(){await sb.auth.signOut();loginView()}
+async function resetPw(){
+  const email=v('#em');if(!email)return alert('আগে ইমেইল ঘরে আপনার ইমেইল লিখুন');
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+'/admin.html'});
+  alert(error?error.message:'পাসওয়ার্ড রিসেটের লিংক ইমেইলে পাঠানো হয়েছে। ইনবক্স ও স্প্যাম দেখুন।');
+}
+function newPwView(){
+  show(`<header>নতুন পাসওয়ার্ড</header><main><div class="card"><input id="np" type="password" placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৮ অক্ষর)"><button class="btn" onclick="setPw()">সেভ করুন</button></div></main>`);
+}
+async function setPw(){
+  const p=$('#np').value;if(p.length<8)return alert('কমপক্ষে ৮ অক্ষর দিন');
+  const {error}=await sb.auth.updateUser({password:p});
+  if(error)return alert(error.message);
+  alert('পাসওয়ার্ড বদলেছে ✅');recovering=false;boot();
+}
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
+  if(recovering)return;
   if(!session)return loginView();
   me=session.user;
-  const {data}=await sb.from('profiles').select('*').eq('id',me.id).single();
+  const {data,error:pe}=await sb.from('profiles').select('*').eq('id',me.id).single();
   profile=data||{};isAdmin=profile.role==='admin';
   if(!['admin','teacher'].includes(profile.role)){
-    show(`<header>Sclzo</header><main><div class="card"><p>এই প্যানেল শুধু টিচার ও অ্যাডমিনের জন্য। অ্যাডমিনকে আপনার অ্যাকাউন্ট টিচার করতে বলুন।</p><button class="btn" onclick="logout()">লগআউট</button></div></main>`);return;
+    show(`<header>Sclzo</header><main><div class="card"><p>এই প্যানেল শুধু টিচার ও অ্যাডমিনের জন্য।</p>
+    <p><small>এখন লগইন করা আছে: <b>${esc(me.email)}</b><br>রোল: ${esc(profile.role||'পাওয়া যায়নি')}</small></p>
+    ${pe?`<p style="color:#b91c1c">প্রোফাইল লোড হয়নি: ${esc(pe.message)}</p>`:''}
+    ${profile.requested_role?'<p>⏳ আপনার টিচার/প্রতিষ্ঠানের অনুরোধ অ্যাডমিনের অনুমোদনের অপেক্ষায় আছে।</p>':''}
+    <button class="btn" onclick="logout()">অন্য অ্যাকাউন্টে লগইন করুন</button><a class="link" href="/">← স্টুডেন্ট অ্যাপে যান</a></div></main>`);return;
   }
   vMcq();
 }
@@ -237,7 +258,7 @@ async function vAtt(i){
   const {data,error}=await sb.rpc('exam_leaderboard',{p_exam_id:e.id});
   if(error)return alert(error.message);
   ui('res',`<button class="link" onclick="vRes()">← ফিরে যান</button><div class="card"><h3>${esc(e.title)}</h3><small>মোট ${(data||[]).length} জন জমা দিয়েছে</small>
-  ${(data||[]).map(a=>`<p><b>${a.rnk}.</b> ${esc(a.full_name||'নাম নেই')} — <b>${a.score}</b><br><small>✅ সঠিক ${a.correct_count} · ❌ ভুল ${a.wrong_count} · ⚪ বাদ ${a.skipped_count}</small></p>`).join('')||'<p>এখনো কেউ জমা দেয়নি</p>'}</div>`);
+  ${(data||[]).map(a=>`<p><b>${a.rnk}.</b> ${esc(a.student_name||'নাম নেই')} — <b>${a.score}</b><br><small>রোল ${esc(a.roll||'-')} · ${esc(a.institution||'-')} · ${esc(a.class_name||'-')}<br>✅ সঠিক ${a.correct_count} · ❌ ভুল ${a.wrong_count} · ⚪ বাদ ${a.skipped_count}</small></p>`).join('')||'<p>এখনো কেউ জমা দেয়নি</p>'}</div>`);
 }
 
 /* ---------- TEACHER: MY MCQs ---------- */
@@ -301,6 +322,34 @@ async function approveTeacher(i){
 async function saveUser(i){
   const {error}=await sb.from('profiles').update({role:$('#ur'+i).value,institution_name:$('#ui'+i).value.trim()||null,requested_role:null}).eq('id',U[i].id);
   if(error)return alert(error.message);alert('সেভ হয়েছে ✅');
+}
+
+/* ---------- ADMIN: PAYMENTS ---------- */
+async function vPay(){
+  ui('pay','<p>লোড হচ্ছে…</p>');
+  const [rq,st]=await Promise.all([sb.from('topup_requests').select('id,user_id,method,amount,sender,trx_id').eq('status','pending').order('id').limit(50),sb.from('app_settings').select('key,value')]);
+  const C={};(st.data||[]).forEach(x=>C[x.key]=x.value);
+  const ids=(rq.data||[]).map(r=>r.user_id),N={};
+  if(ids.length){const {data:p}=await sb.from('profiles').select('id,full_name').in('id',ids);(p||[]).forEach(x=>N[x.id]=x.full_name)}
+  ui('pay',`<div class="card"><h3>পেমেন্টের তথ্য (স্টুডেন্টরা দেখবে)</h3>
+  <input id="s1" placeholder="bKash নম্বর" value="${esc(C.bkash_number||'')}"><input id="s2" placeholder="Nagad নম্বর" value="${esc(C.nagad_number||'')}">
+  <input id="s3" placeholder="ব্যাংকের তথ্য" value="${esc(C.bank_info||'')}"><input id="s4" placeholder="অতিরিক্ত নির্দেশনা" value="${esc(C.pay_note||'')}">
+  <button class="btn" onclick="saveSettings()">সেভ করুন</button></div>
+  <h3>অপেক্ষমাণ অনুরোধ (${(rq.data||[]).length})</h3>
+  ${(rq.data||[]).map(r=>`<div class="card"><b>৳ ${r.amount}</b> · ${esc(r.method)}<br><small>${esc(N[r.user_id]||'')} · পাঠিয়েছে: ${esc(r.sender)}<br>TrxID: <b>${esc(r.trx_id)}</b></small><br>
+  <small>⚠️ আগে নিজের bKash/Nagad/ব্যাংকে TrxID ও টাকার পরিমাণ মিলিয়ে দেখুন, তারপর অনুমোদন দিন।</small><br>
+  <button class="btn2" onclick="revTop(${r.id},true)">✅ অনুমোদন</button><button class="btn2" onclick="revTop(${r.id},false)">❌ বাতিল</button></div>`).join('')||'<p class="card">কোনো অনুরোধ নেই</p>'}`);
+}
+async function saveSettings(){
+  const rows=[['bkash_number','#s1'],['nagad_number','#s2'],['bank_info','#s3'],['pay_note','#s4']].map(([k,i])=>({key:k,value:v(i)}));
+  const {error}=await sb.from('app_settings').upsert(rows);
+  alert(error?error.message:'সেভ হয়েছে ✅');
+}
+async function revTop(id,ok){
+  if(ok&&!confirm('ট্রানজেকশন যাচাই করেছেন? অনুমোদন করলে ইউজারের ব্যালেন্সে টাকা যোগ হবে।'))return;
+  const note=ok?'':(prompt('বাতিলের কারণ (ঐচ্ছিক):')||'');
+  const {error}=await sb.rpc('review_topup',{p_id:id,p_approve:ok,p_note:note});
+  if(error)return alert(error.message);vPay();
 }
 
 boot();
