@@ -99,33 +99,63 @@ async function saveMcq(){
 }
 
 /* ---------- BULK IMPORT ---------- */
+const MP={'ক':'a','খ':'b','গ':'c','ঘ':'d',a:'a',b:'b',c:'c',d:'d','1':'a','2':'b','3':'c','4':'d'};
 function vImp(){
-  ui('imp',`<div class="card"><h3>বাল্ক ইমপোর্ট</h3>${pk('i')}
-  <small>প্রতি লাইনে একটি MCQ, | চিহ্ন দিয়ে আলাদা:<br>প্রশ্ন|ক|খ|গ|ঘ|সঠিক (ক/খ/গ/ঘ বা a-d)|ব্যাখ্যা</small>
-  <textarea id="txt" style="min-height:200px" placeholder="বাংলাদেশের রাজধানী কোথায়?|ঢাকা|চট্টগ্রাম|খুলনা|রাজশাহী|ক|ঢাকা বাংলাদেশের রাজধানী"></textarea>
-  <button class="btn" onclick="doImport()">ইমপোর্ট করুন</button></div>`);
-  loadSubs('i');
+  ui('imp',`<div class="card"><h3>একসাথে অনেক MCQ</h3>${pk('i')}
+  <small>প্রতিটি প্রশ্নের জন্য আলাদা ঘর: প্রশ্ন, ক, খ, গ, ঘ, সঠিক উত্তর, ব্যাখ্যা। অনেক প্রশ্ন হলে CSV ফাইল দিন (Excel থেকে Save as CSV)।</small>
+  <input type="file" id="csv" accept=".csv,text/csv" onchange="readCsv(this)">
+  <a class="link" download="mcq_template.csv" href="data:text/csv;charset=utf-8,%EF%BB%BFquestion,option_a,option_b,option_c,option_d,correct,explanation%0A">⬇ CSV টেমপ্লেট নামান</a></div>
+  <div id="rw"></div><button class="btn2" onclick="addRow()">➕ আরেকটি প্রশ্ন</button><button class="btn" onclick="saveRows()">সব সেভ করুন</button><br><br>`);
+  loadSubs('i');addRow();
 }
-async function doImport(){
+function addRow(){
+  const d=document.createElement('div');d.className='card mr';
+  d.innerHTML=`<textarea class="rq" placeholder="প্রশ্ন"></textarea><input class="ra" placeholder="ক"><input class="rb" placeholder="খ"><input class="rc" placeholder="গ"><input class="rd" placeholder="ঘ">
+  <select class="rk"><option value="">সঠিক উত্তর বাছুন</option><option value="a">ক</option><option value="b">খ</option><option value="c">গ</option><option value="d">ঘ</option></select>
+  <textarea class="re" placeholder="ব্যাখ্যা (ঐচ্ছিক)"></textarea><button class="btn2" onclick="this.parentNode.remove()">✖ মুছুন</button>`;
+  $('#rw').appendChild(d);
+}
+function saveRows(){
+  const L=[...document.querySelectorAll('#rw .mr')].map(d=>{const g=c=>d.querySelector(c).value.trim();return {q:g('.rq'),a:g('.ra'),b:g('.rb'),c:g('.rc'),d:g('.rd'),k:g('.rk'),e:g('.re')}}).filter(r=>r.q||r.a||r.b||r.c||r.d);
+  insertRows(L,true);
+}
+async function insertRows(L,clear){
   const sid=+$('#isub').value;if(!sid)return alert('বিষয় নির্বাচন করুন');
-  const cid=+$('#ich').value||null,MP={'ক':'a','খ':'b','গ':'c','ঘ':'d',a:'a',b:'b',c:'c',d:'d','1':'a','2':'b','3':'c','4':'d'};
-  const rows=[],keys=[],bad=[];
-  $('#txt').value.split('\n').forEach((ln,i)=>{
-    if(!ln.trim())return;const p=ln.split('|').map(s=>s.trim()),c=MP[(p[5]||'').toLowerCase()];
-    if(p.length<6||p.slice(0,5).some(x=>!x)||!c){bad.push(i+1);return}
-    rows.push({subject_id:sid,chapter_id:cid,question:p[0],option_a:p[1],option_b:p[2],option_c:p[3],option_d:p[4],...STATUS()});
-    keys.push({correct_option:c,explanation:p[6]||null});
-  });
-  if(bad.length)return alert('এই লাইনে ভুল আছে: '+bad.slice(0,20).join(', '));
-  if(!rows.length)return alert('কিছু লেখা নেই');
+  const cid=+$('#ich').value||null,bad=[];
+  L.forEach((r,i)=>{if(!r.q||!r.a||!r.b||!r.c||!r.d||!MP[String(r.k).toLowerCase()])bad.push(i+1)});
+  if(!L.length)return alert('কোনো প্রশ্ন নেই');
+  if(bad.length)return alert('এই নম্বরের প্রশ্নে ঘর ফাঁকা বা সঠিক উত্তর ঠিক নয়: '+bad.slice(0,20).join(', '));
   let n=0;
-  for(let i=0;i<rows.length;i+=100){
-    const {data,error}=await sb.from('mcqs').insert(rows.slice(i,i+100)).select('id');
+  for(let i=0;i<L.length;i+=100){
+    const ch=L.slice(i,i+100);
+    const {data,error}=await sb.from('mcqs').insert(ch.map(r=>({subject_id:sid,chapter_id:cid,question:r.q,option_a:r.a,option_b:r.b,option_c:r.c,option_d:r.d,...STATUS()}))).select('id');
     if(error)return alert(n+'টি সেভ হয়েছে, তারপর এরর: '+error.message);
-    const {error:e2}=await sb.from('mcq_keys').insert(data.map((d,j)=>({mcq_id:d.id,...keys[i+j]})));
+    const {error:e2}=await sb.from('mcq_keys').insert(data.map((d,j)=>({mcq_id:d.id,correct_option:MP[String(ch[j].k).toLowerCase()],explanation:ch[j].e||null})));
     if(e2)return alert(e2.message);n+=data.length;
   }
-  alert(n+'টি MCQ ইমপোর্ট হয়েছে ✅');$('#txt').value='';
+  alert(n+'টি MCQ সেভ হয়েছে ✅');if(clear){$('#rw').innerHTML='';addRow()}
+}
+function parseCsv(t){
+  const r=[];let row=[],f='',q=false;t=t.replace(/^\uFEFF/,'');
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c=='"')q=true;else if(c==','){row.push(f);f=''}
+    else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;row.push(f);f='';if(row.some(x=>x.trim()))r.push(row);row=[]}
+    else f+=c}
+  row.push(f);if(row.some(x=>x.trim()))r.push(row);return r;
+}
+function readCsv(inp){
+  const f=inp.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const R=parseCsv(String(rd.result));
+    if(R.length&&/^(question|প্রশ্ন)$/i.test(R[0][0].trim()))R.shift();
+    const L=R.map(c=>({q:(c[0]||'').trim(),a:(c[1]||'').trim(),b:(c[2]||'').trim(),c:(c[3]||'').trim(),d:(c[4]||'').trim(),k:(c[5]||'').trim(),e:(c[6]||'').trim()}));
+    if(!L.length)return alert('ফাইলে কোনো প্রশ্ন পাওয়া যায়নি');
+    if(confirm(L.length+'টি MCQ পাওয়া গেছে। সেভ করবেন?'))insertRows(L,false);
+    inp.value='';
+  };
+  rd.readAsText(f,'UTF-8');
 }
 
 /* ---------- CREATE EXAM ---------- */
@@ -173,28 +203,41 @@ async function makeExam(){
     institution_name:v('#inst')||null,duration_minutes:dur,marks_per_question:+$('#mk').value||1,
     negative_marking:$('#neg').checked,negative_mark:+$('#nm').value||0.25,
     start_time:$('#st').value?new Date($('#st').value).toISOString():null,
-    end_time:$('#en').value?new Date($('#en').value).toISOString():null,status:'published'};
+    end_time:$('#en').value?new Date($('#en').value).toISOString():null,status:'published',visibility:isAdmin?'public':'private'};
   const {data,error}=await sb.from('exams').insert(row).select('id,share_code').single();
   if(error)return alert(error.message);
   const {error:e2}=await sb.from('exam_questions').insert(ids.map((id,i)=>({exam_id:data.id,mcq_id:id,sort_order:i})));
   if(e2)return alert(e2.message);
-  alert('পরীক্ষা পাবলিশ হয়েছে ✅\nশেয়ার কোড: '+data.share_code+'\nএই কোড গ্রুপে দিন, স্টুডেন্ট অ্যাপে কোড বসিয়ে পরীক্ষা দেবে।');
-  vRes();
+  showLink(data.share_code,title);
 }
 
 /* ---------- RESULTS ---------- */
+let E=[];
+const shareLink=c=>location.origin+'/?exam='+c;
+async function copyLink(c){
+  try{await navigator.clipboard.writeText(shareLink(c));alert('লিংক কপি হয়েছে ✅')}
+  catch(e){prompt('লিংকটি কপি করুন:',shareLink(c))}
+}
+function showLink(c,t){
+  ui('res',`<div class="card"><h3>✅ পাবলিশ হয়েছে</h3><b>${esc(t)}</b>
+  <p>এই লিংক স্টুডেন্টদের দিন। লিংক খুলে লগইন করলেই পরীক্ষা পাবে। অন্য কেউ এই পরীক্ষা বা ফলাফল দেখতে পারবে না।</p>
+  <input readonly value="${shareLink(c)}" onclick="this.select()"><button class="btn" onclick="copyLink('${c}')">🔗 লিংক কপি করুন</button>
+  <button class="btn2" onclick="vRes()">আমার পরীক্ষাগুলো</button></div>`);
+}
 async function vRes(){
   ui('res','<p>লোড হচ্ছে…</p>');
-  let q=sb.from('exams').select('id,title,share_code,duration_minutes').order('created_at',{ascending:false}).limit(30);
+  let q=sb.from('exams').select('id,title,share_code,duration_minutes,visibility').order('created_at',{ascending:false}).limit(30);
   if(!isAdmin)q=q.eq('created_by',me.id);
-  const {data}=await q;
-  ui('res',(data||[]).map(e=>`<button class="item" onclick="vAtt(${e.id},'${esc(e.title).replace(/'/g,'')}')"><b>${esc(e.title)}</b><br><small>কোড: ${e.share_code} · ${e.duration_minutes} মিনিট</small></button>`).join('')||'<p class="card">কোনো পরীক্ষা নেই</p>');
+  const {data}=await q;E=data||[];
+  ui('res',E.map((e,i)=>`<div class="card"><b>${esc(e.title)}</b><br><small>${e.duration_minutes} মিনিট · ${e.visibility==='public'?'সবার জন্য':'শুধু লিংকধারীর জন্য'}</small><br>
+  <button class="btn2" onclick="vAtt(${i})">📊 ফলাফল ও র‍্যাংকিং</button><button class="btn2" onclick="copyLink('${e.share_code}')">🔗 লিংক কপি</button></div>`).join('')||'<p class="card">কোনো পরীক্ষা নেই</p>');
 }
-async function vAtt(id,t){
-  const {data}=await sb.from('attempts').select('user_id,score,correct_count,wrong_count').eq('exam_id',id).not('submitted_at','is',null).order('score',{ascending:false});
-  const ids=(data||[]).map(a=>a.user_id),names={};
-  if(ids.length){const {data:p}=await sb.from('profiles').select('id,full_name').in('id',ids);(p||[]).forEach(x=>names[x.id]=x.full_name)}
-  ui('res',`<button class="link" onclick="vRes()">← ফিরে যান</button><div class="card"><h3>${esc(t)} — মেধা তালিকা</h3>${(data||[]).map((a,i)=>`<p>${i+1}. <b>${esc(names[a.user_id]||a.user_id.slice(0,6))}</b> — ${a.score} (✅${a.correct_count} ❌${a.wrong_count})</p>`).join('')||'<p>এখনো কেউ জমা দেয়নি</p>'}</div>`);
+async function vAtt(i){
+  const e=E[i];
+  const {data,error}=await sb.rpc('exam_leaderboard',{p_exam_id:e.id});
+  if(error)return alert(error.message);
+  ui('res',`<button class="link" onclick="vRes()">← ফিরে যান</button><div class="card"><h3>${esc(e.title)}</h3><small>মোট ${(data||[]).length} জন জমা দিয়েছে</small>
+  ${(data||[]).map(a=>`<p><b>${a.rnk}.</b> ${esc(a.full_name||'নাম নেই')} — <b>${a.score}</b><br><small>✅ সঠিক ${a.correct_count} · ❌ ভুল ${a.wrong_count} · ⚪ বাদ ${a.skipped_count}</small></p>`).join('')||'<p>এখনো কেউ জমা দেয়নি</p>'}</div>`);
 }
 
 /* ---------- TEACHER: MY MCQs ---------- */
@@ -246,13 +289,17 @@ async function addCh(){
 let U=[];
 async function vUsr(){
   ui('usr','<p>লোড হচ্ছে…</p>');
-  const {data}=await sb.from('profiles').select('id,full_name,role,institution_name').order('created_at',{ascending:false}).limit(100);
-  U=data||[];
-  ui('usr',U.map((u,i)=>`<div class="card"><b>${esc(u.full_name||'(নাম নেই)')}</b><br><select id="ur${i}"><option value="student" ${u.role==='student'?'selected':''}>স্টুডেন্ট</option><option value="teacher" ${u.role==='teacher'?'selected':''}>টিচার</option><option value="admin" ${u.role==='admin'?'selected':''}>অ্যাডমিন</option></select>
-  <input id="ui${i}" placeholder="প্রতিষ্ঠানের নাম" value="${esc(u.institution_name||'')}"><button class="btn2" onclick="saveUser(${i})">সেভ</button></div>`).join(''));
+  const {data}=await sb.from('profiles').select('id,full_name,role,institution_name,requested_role').order('created_at',{ascending:false}).limit(100);
+  U=(data||[]).sort((a,b)=>!!b.requested_role-!!a.requested_role);
+  ui('usr',U.map((u,i)=>`<div class="card"><b>${esc(u.full_name||'(নাম নেই)')}</b>${u.requested_role?' <span style="color:#b45309">⏳ টিচার/প্রতিষ্ঠান হতে চায়</span>':''}<br><select id="ur${i}"><option value="student" ${u.role==='student'?'selected':''}>স্টুডেন্ট</option><option value="teacher" ${u.role==='teacher'?'selected':''}>টিচার</option><option value="admin" ${u.role==='admin'?'selected':''}>অ্যাডমিন</option></select>
+  <input id="ui${i}" placeholder="প্রতিষ্ঠানের নাম" value="${esc(u.institution_name||'')}"><button class="btn2" onclick="saveUser(${i})">সেভ</button>${u.requested_role?`<button class="btn2" onclick="approveTeacher(${i})">✅ টিচার করুন</button>`:''}</div>`).join(''));
+}
+async function approveTeacher(i){
+  const {error}=await sb.from('profiles').update({role:'teacher',requested_role:null}).eq('id',U[i].id);
+  if(error)return alert(error.message);vUsr();
 }
 async function saveUser(i){
-  const {error}=await sb.from('profiles').update({role:$('#ur'+i).value,institution_name:$('#ui'+i).value.trim()||null}).eq('id',U[i].id);
+  const {error}=await sb.from('profiles').update({role:$('#ur'+i).value,institution_name:$('#ui'+i).value.trim()||null,requested_role:null}).eq('id',U[i].id);
   if(error)return alert(error.message);alert('সেভ হয়েছে ✅');
 }
 
