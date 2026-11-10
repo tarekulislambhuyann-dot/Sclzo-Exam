@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#4338ca">
+<title>Sclzo Exam</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,"Noto Sans Bengali",sans-serif;background:#f3f4f8;color:#1f2430;padding-bottom:70px}
+header{position:sticky;top:0;background:#4338ca;color:#fff;padding:14px 16px;font-weight:700;display:flex;justify-content:space-between;z-index:5}
+main{max-width:640px;margin:0 auto;padding:12px}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+h2,h3{margin:6px 0 10px}h3{font-size:17px;line-height:1.5}small{color:#667}
+input,select{width:100%;padding:12px;margin:6px 0;border:1px solid #ccd;border-radius:8px;font-size:16px;background:#fff}
+button{font:inherit;cursor:pointer}
+.btn,.btn2{padding:12px 16px;border:0;border-radius:10px;font-weight:600;font-size:16px;width:100%;margin-top:8px}
+.btn{background:#4338ca;color:#fff}.btn2{background:#e5e7f5;color:#333}.btn2:disabled{opacity:.4}
+.link{background:none;border:0;color:#4338ca;padding:10px;width:100%}
+.opt{display:block;width:100%;text-align:left;padding:12px;margin:8px 0;border:2px solid #dde;border-radius:10px;background:#fff;font-size:16px}
+.opt.sel{border-color:#4338ca;background:#eef}.opt.ok{border-color:#16a34a;background:#dcfce7}.opt.bad{border-color:#dc2626;background:#fee2e2}
+.exp{background:#fff8e1;padding:10px;border-radius:8px}
+.row{display:flex;gap:10px}.row .btn,.row .btn2{margin-top:0}
+.item{display:block;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px #0002}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid #ddd}
+nav button{flex:1;padding:14px;border:0;background:none;color:#667;font-weight:600}nav .on{color:#4338ca;border-top:3px solid #4338ca}
+.tm{background:#fff;color:#4338ca;padding:2px 10px;border-radius:8px}.big{font-size:34px;font-weight:800;color:#4338ca}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL='https://amyndifcebeffgsxwiec.supabase.co';
+const SUPABASE_KEY='sb_publishable_WFiJ2YoKmzQ_b1yh9-sR1Q_FvuGVRzP';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const show=h=>{$('#app').innerHTML=h};
+const BN={a:'ক',b:'খ',c:'গ',d:'ঘ'};
+const TYPES={chapter_test:'চ্যাপ্টার টেস্ট',class_test:'ক্লাস টেস্ট',weekly:'সাপ্তাহিক',model_test:'মডেল টেস্ট',half_yearly:'অর্ধবার্ষিক',final:'বার্ষিক'};
+const CATS=[5,6,7,8,9,10,11,12].map(c=>['c'+c,'ক্লাস '+c]).concat([['ssc','SSC'],['hsc','HSC'],['admission','ভর্তি পরীক্ষা'],['job','চাকরি']]);
+let me=null,profile={},S={};
+
+function shell(t,body,tabk){
+  return `<header>${esc(t)}</header><main>${body}</main>`+(tabk?`<nav>${[['practice','প্র্যাকটিস'],['exams','পরীক্ষা'],['me','প্রোফাইল']].map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="tab('${k}')">${n}</button>`).join('')}</nav>`:'');
+}
+function tab(k){({practice:practiceHome,exams:examsView,me:meView})[k]()}
+function opts(m,sel,cor,tag='button'){
+  return ['a','b','c','d'].map(k=>{let c='opt';
+    if(cor){if(k===cor)c+=' ok';else if(k===sel)c+=' bad'}else if(k===sel)c+=' sel';
+    return `<${tag} class="${c}" data-k="${k}"><b>${BN[k]}.</b> ${esc(m['option_'+k])}</${tag}>`}).join('');
+}
+
+/* ---------- AUTH ---------- */
+function authView(mode){
+  const reg=mode==='reg';
+  show(`<header>Sclzo Exam</header><main><div class="card"><h2>${reg?'নতুন অ্যাকাউন্ট':'লগইন'}</h2>
+  ${reg?`<input id="nm" placeholder="আপনার নাম"><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
+  <input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
+  <button class="btn" onclick="doAuth('${mode}')">${reg?'রেজিস্টার':'লগইন'}</button>
+  <button class="link" onclick="authView('${reg?'login':'reg'}')">${reg?'আগে থেকেই অ্যাকাউন্ট আছে? লগইন':'নতুন? অ্যাকাউন্ট খুলুন'}</button></div></main>`);
+}
+async function doAuth(mode){
+  const email=$('#em').value.trim(),pw=$('#pw').value;
+  if(!email||!pw)return alert('ইমেইল ও পাসওয়ার্ড দিন');
+  if(mode==='reg'){
+    const name=$('#nm').value.trim(),cl=+$('#cl').value||null;
+    const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{full_name:name}}});
+    if(error)return alert(error.message);
+    if(!data.session)return alert('ইমেইল কনফার্ম করে তারপর লগইন করুন');
+    await sb.from('profiles').update({class_level:cl}).eq('id',data.user.id);
+  }else{
+    const {error}=await sb.auth.signInWithPassword({email,password:pw});
+    if(error)return alert(error.message);
+  }
+  boot();
+}
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session)return authView('login');
+  me=session.user;
+  const {data}=await sb.from('profiles').select('*').eq('id',me.id).single();
+  profile=data||{};
+  practiceHome();
+}
+
+/* ---------- PRACTICE ---------- */
+async function practiceHome(key){
+  key=key||(profile.class_level?'c'+profile.class_level:'ssc');
+  show(shell('প্র্যাকটিস','<p>লোড হচ্ছে…</p>','practice'));
+  let q=sb.from('subjects').select('id,name').order('name');
+  q=/^c\d+$/.test(key)?q.eq('category','school').eq('class_level',+key.slice(1)):q.eq('category',key);
+  const {data}=await q;const subs=data||[];
+  show(shell('প্র্যাকটিস',`<select id="cat" onchange="practiceHome(this.value)">${CATS.map(([k,n])=>`<option value="${k}" ${k===key?'selected':''}>${n}</option>`).join('')}</select>
+  ${subs.length?subs.map(s=>`<button class="item" onclick="chaptersView(${s.id},'${esc(s.name).replace(/'/g,'')}')">📘 ${esc(s.name)}</button>`).join(''):'<p class="card">এই ক্যাটাগরিতে এখনো কোনো বিষয় নেই।</p>'}`,'practice'));
+}
+async function chaptersView(sid,name){
+  const {data}=await sb.from('chapters').select('id,name').eq('subject_id',sid).order('sort_order');
+  show(shell(name,`<button class="link" onclick="practiceHome()">← ফিরে যান</button>
+  <button class="item" onclick="startPractice(${sid},null)">⭐ সব অধ্যায় থেকে</button>
+  ${(data||[]).map(c=>`<button class="item" onclick="startPractice(${sid},${c.id})">${esc(c.name)}</button>`).join('')}`,'practice'));
+}
+async function startPractice(sid,cid){
+  let q=sb.from('mcqs').select('id,question,option_a,option_b,option_c,option_d').eq('subject_id',sid).eq('status','approved').limit(50);
+  if(cid)q=q.eq('chapter_id',cid);
+  const {data,error}=await q;
+  if(error)return alert(error.message);
+  if(!data||!data.length)return alert('এখানে এখনো কোনো MCQ নেই');
+  S.p={list:data.sort(()=>Math.random()-.5),i:0,ok:0,done:0};pQ();
+}
+function pQ(){
+  const p=S.p,m=p.list[p.i];
+  if(!m)return show(shell('শেষ',`<div class="card"><h2>প্র্যাকটিস শেষ!</h2><p class="big">${p.ok}/${p.list.length}</p><button class="btn" onclick="practiceHome()">আবার শুরু</button></div>`,'practice'));
+  show(shell('প্র্যাকটিস',`<div class="card"><small>${p.i+1}/${p.list.length}</small><h3>${esc(m.question)}</h3>${opts(m)}<div id="ex"></div></div>`,'practice'));
+  document.querySelectorAll('.opt').forEach(b=>b.onclick=async()=>{
+    if(p.done)return;p.done=1;
+    const {data}=await sb.rpc('check_answer',{p_mcq_id:m.id,p_option:b.dataset.k});
+    if(!data)return;
+    if(data.is_correct)p.ok++;
+    document.querySelectorAll('.opt').forEach(x=>{if(x.dataset.k===data.correct_option)x.classList.add('ok');else if(x===b)x.classList.add('bad')});
+    $('#ex').innerHTML=(data.explanation?`<p class="exp">${esc(data.explanation)}</p>`:'')+'<button class="btn" id="nx">পরের প্রশ্ন</button>';
+    $('#nx').onclick=()=>{p.i++;p.done=0;pQ()};
+  });
+}
+
+/* ---------- EXAMS ---------- */
+async function examsView(){
+  show(shell('পরীক্ষা','<p>লোড হচ্ছে…</p>','exams'));
+  const {data}=await sb.from('exams').select('id,title,exam_type,duration_minutes,institution_name,start_time,end_time,class_level').eq('status','published').order('created_at',{ascending:false}).limit(40);
+  const now=Date.now();
+  const list=(data||[]).filter(e=>(!e.end_time||new Date(e.end_time)>now)&&(e.class_level==null||e.class_level==profile.class_level));
+  show(shell('পরীক্ষা',`<div class="card"><b>এক্সাম কোড আছে?</b><input id="code" placeholder="কোড লিখুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
+  ${list.length?list.map(e=>`<button class="item" onclick="openExam(${e.id})"><b>${esc(e.title)}</b><br><small>${TYPES[e.exam_type]||''} · ${e.duration_minutes} মিনিট${e.institution_name?' · '+esc(e.institution_name):''}${e.start_time?'<br>শুরু: '+new Date(e.start_time).toLocaleString('bn-BD'):''}</small></button>`).join(''):'<p class="card">এখন কোনো পরীক্ষা নেই।</p>'}`,'exams'));
+}
+async function byCode(){
+  const c=$('#code').value.trim();if(!c)return;
+  const {data}=await sb.from('exams').select('id').eq('share_code',c).eq('status','published').maybeSingle();
+  if(!data)return alert('এই কোডে কোনো পরীক্ষা পাওয়া যায়নি');
+  openExam(data.id);
+}
+async function openExam(id){
+  const {data:aid,error}=await sb.rpc('start_attempt',{p_exam_id:id});
+  if(error)return alert(error.message);
+  const [{data:att},{data:ex}]=await Promise.all([sb.from('attempts').select('*').eq('id',aid).single(),sb.from('exams').select('*').eq('id',id).single()]);
+  if(att.submitted_at)return resultView({score:att.score,correct:att.correct_count,wrong:att.wrong_count,skipped:att.skipped_count},att.id,ex.title);
+  const {data:qs,error:e2}=await sb.from('exam_questions').select('sort_order,mcqs(id,question,option_a,option_b,option_c,option_d)').eq('exam_id',id).order('sort_order');
+  if(e2)return alert(e2.message);
+  let saved={};try{saved=JSON.parse(localStorage.getItem('ans_'+att.id)||'{}')}catch(e){}
+  S.x={att,ex,qs:qs.map(r=>r.mcqs).filter(Boolean),ans:saved,i:0};
+  if(!S.x.qs.length)return alert('এই পরীক্ষায় কোনো প্রশ্ন নেই');
+  S.end=new Date(att.started_at).getTime()+ex.duration_minutes*60000;
+  clearInterval(S.t);S.t=setInterval(tick,1000);xQ();
+}
+function tick(){
+  const left=Math.max(0,Math.floor((S.end-Date.now())/1000)),el=$('#tm');
+  if(el)el.textContent=String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0');
+  if(left<=0){clearInterval(S.t);submitX(true)}
+}
+function xQ(){
+  const x=S.x,m=x.qs[x.i],n=x.qs.length;
+  show(`<header><span>${esc(x.ex.title)}</span><span id="tm" class="tm"></span></header><main>
+  <div class="card"><small>প্রশ্ন ${x.i+1}/${n} · উত্তর দেওয়া ${Object.keys(x.ans).length}টি</small><h3>${esc(m.question)}</h3>${opts(m,x.ans[m.id])}</div>
+  <div class="row"><button class="btn2" id="pv" ${x.i?'':'disabled'}>← আগে</button>${x.i<n-1?'<button class="btn" id="nx">পরে →</button>':'<button class="btn" id="fin">জমা দিন</button>'}</div>
+  ${x.i<n-1?'<button class="link" id="fin">এখনই জমা দিন</button>':''}</main>`);
+  document.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{x.ans[m.id]=b.dataset.k;localStorage.setItem('ans_'+x.att.id,JSON.stringify(x.ans));xQ()});
+  $('#pv').onclick=()=>{x.i--;xQ()};
+  if($('#nx'))$('#nx').onclick=()=>{x.i++;xQ()};
+  $('#fin').onclick=()=>{if(confirm('জমা দেবেন?'))submitX(false)};
+  tick();
+}
+async function submitX(auto){
+  const x=S.x;clearInterval(S.t);
+  const {data,error}=await sb.rpc('submit_attempt',{p_attempt_id:x.att.id,p_answers:x.ans});
+  if(error){alert(error.message);return examsView()}
+  localStorage.removeItem('ans_'+x.att.id);
+  if(auto)alert('সময় শেষ! উত্তর জমা হয়েছে।');
+  resultView(data,x.att.id,x.ex.title);
+}
+function resultView(r,id,title){
+  show(shell('ফলাফল',`<div class="card" style="text-align:center"><small>${esc(title)}</small><p class="big">${r.score}</p>
+  <p>✅ সঠিক ${r.correct} · ❌ ভুল ${r.wrong} · ⚪ বাদ ${r.skipped}</p>
+  <button class="btn" onclick="review(${id})">ভুল ও ব্যাখ্যা দেখুন</button><button class="btn2" onclick="examsView()">পরীক্ষার তালিকা</button></div>`,'exams'));
+}
+async function review(id){
+  const {data,error}=await sb.rpc('get_attempt_review',{p_attempt_id:id});
+  if(error)return alert(error.message);
+  show(shell('উত্তর ও ব্যাখ্যা',`<button class="link" onclick="tab('me')">← ফিরে যান</button>`+(data||[]).map((m,i)=>`<div class="card"><small>${i+1}. ${m.is_correct?'✅ সঠিক':(m.selected_option?'❌ ভুল':'⚪ উত্তর দাওনি')}</small><h3>${esc(m.question)}</h3>${opts(m,m.selected_option,m.correct_option,'div')}${m.explanation?`<p class="exp">${esc(m.explanation)}</p>`:''}</div>`).join(''),'me'));
+}
+
+/* ---------- PROFILE ---------- */
+async function meView(){
+  show(shell('প্রোফাইল','<p>লোড হচ্ছে…</p>','me'));
+  const {data}=await sb.from('attempts').select('id,score,correct_count,wrong_count,submitted_at,exams(title)').eq('user_id',me.id).not('submitted_at','is',null).order('submitted_at',{ascending:false}).limit(30);
+  show(shell('প্রোফাইল',`<div class="card"><b>${esc(profile.full_name||me.email)}</b><br><small>${esc(me.email)}</small>
+  <select id="pc"><option value="">ক্লাস নির্বাচন (বা SSC/HSC/চাকরি)</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}" ${profile.class_level==c?'selected':''}>ক্লাস ${c}</option>`).join('')}</select>
+  <button class="btn" onclick="saveClass()">সেভ করুন</button><button class="btn2" onclick="logout()">লগআউট</button></div>
+  <h3>আমার ফলাফল</h3>${(data||[]).length?data.map(a=>`<button class="item" onclick="review(${a.id})"><b>${esc(a.exams?.title||'পরীক্ষা')}</b><br><small>স্কোর ${a.score} · সঠিক ${a.correct_count} · ভুল ${a.wrong_count}</small></button>`).join(''):'<p class="card">এখনো কোনো পরীক্ষা দেননি।</p>'}`,'me'));
+}
+async function saveClass(){
+  const v=+$('#pc').value||null;
+  const {error}=await sb.from('profiles').update({class_level:v}).eq('id',me.id);
+  if(error)return alert(error.message);
+  profile.class_level=v;alert('সেভ হয়েছে');
+}
+async function logout(){await sb.auth.signOut();authView('login')}
+
+boot();
+</script>
+</body>
+</html>
