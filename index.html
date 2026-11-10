@@ -42,9 +42,9 @@ const CATS=[5,6,7,8,9,10,11,12].map(c=>['c'+c,'ক্লাস '+c]).concat([['s
 let me=null,profile={},S={};
 
 function shell(t,body,tabk){
-  return `<header>${esc(t)}</header><main>${body}</main>`+(tabk?`<nav>${[['practice','প্র্যাকটিস'],['exams','পরীক্ষা'],['me','প্রোফাইল']].map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="tab('${k}')">${n}</button>`).join('')}</nav>`:'');
+  return `<header>${esc(t)}</header><main>${body}</main>`+(tabk?`<nav>${[['practice','প্র্যাকটিস'],['exams','পরীক্ষা'],['me','প্রোফাইল']].concat(['teacher','admin'].includes(profile.role)?[['panel','টিচার প্যানেল']]:[]).map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="tab('${k}')">${n}</button>`).join('')}</nav>`:'');
 }
-function tab(k){({practice:practiceHome,exams:examsView,me:meView})[k]()}
+function tab(k){({practice:practiceHome,exams:examsView,me:meView,panel:()=>{location.href='/admin.html'}})[k]()}
 function opts(m,sel,cor,tag='button'){
   return ['a','b','c','d'].map(k=>{let c='opt';
     if(cor){if(k===cor)c+=' ok';else if(k===sel)c+=' bad'}else if(k===sel)c+=' sel';
@@ -55,7 +55,7 @@ function opts(m,sel,cor,tag='button'){
 function authView(mode){
   const reg=mode==='reg';
   show(`<header>Sclzo Exam</header><main><div class="card"><h2>${reg?'নতুন অ্যাকাউন্ট':'লগইন'}</h2>
-  ${reg?`<input id="nm" placeholder="আপনার নাম"><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
+  ${reg?`<select id="at" onchange="atChg()"><option value="student">আমি স্টুডেন্ট</option><option value="teacher">আমি টিচার</option><option value="institute">আমি প্রতিষ্ঠান (স্কুল/কোচিং)</option></select><input id="nm" placeholder="আপনার নাম"><input id="inst" placeholder="প্রতিষ্ঠানের নাম" style="display:none"><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
   <input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
   <button class="btn" onclick="doAuth('${mode}')">${reg?'রেজিস্টার':'লগইন'}</button>
   <button class="link" onclick="authView('${reg?'login':'reg'}')">${reg?'আগে থেকেই অ্যাকাউন্ট আছে? লগইন':'নতুন? অ্যাকাউন্ট খুলুন'}</button></div></main>`);
@@ -64,23 +64,30 @@ async function doAuth(mode){
   const email=$('#em').value.trim(),pw=$('#pw').value;
   if(!email||!pw)return alert('ইমেইল ও পাসওয়ার্ড দিন');
   if(mode==='reg'){
-    const name=$('#nm').value.trim(),cl=+$('#cl').value||null;
+    const name=$('#nm').value.trim(),cl=+$('#cl').value||null,at=$('#at').value,inst=$('#inst').value.trim();
+    if(at!=='student'&&!inst)return alert('প্রতিষ্ঠানের নাম লিখুন');
     const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{full_name:name}}});
     if(error)return alert(error.message);
     if(!data.session)return alert('ইমেইল কনফার্ম করে তারপর লগইন করুন');
-    await sb.from('profiles').update({class_level:cl}).eq('id',data.user.id);
+    const up=at==='student'?{class_level:cl}:{institution_name:inst,requested_role:'teacher'};
+    const {error:e2}=await sb.from('profiles').update(up).eq('id',data.user.id);
+    if(e2)alert(e2.message);
+    else if(at!=='student')alert('রেজিস্টার হয়েছে ✅ অ্যাডমিন অনুমোদন দিলে আপনি টিচার প্যানেলে (/admin.html) ঢুকতে পারবেন। ততক্ষণ এই অ্যাপ স্টুডেন্ট হিসেবে ব্যবহার করতে পারবেন।');
   }else{
     const {error}=await sb.auth.signInWithPassword({email,password:pw});
     if(error)return alert(error.message);
   }
   boot();
 }
+function atChg(){const t=$('#at').value!=='student';$('#inst').style.display=t?'block':'none';$('#cl').style.display=t?'none':'block'}
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session)return authView('login');
   me=session.user;
   const {data}=await sb.from('profiles').select('*').eq('id',me.id).single();
   profile=data||{};
+  const lc=new URLSearchParams(location.search).get('exam');
+  if(lc){history.replaceState(null,'',location.pathname);return joinByCode(lc)}
   practiceHome();
 }
 
@@ -132,15 +139,15 @@ async function examsView(){
   show(shell('পরীক্ষা',`<div class="card"><b>এক্সাম কোড আছে?</b><input id="code" placeholder="কোড লিখুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
   ${list.length?list.map(e=>`<button class="item" onclick="openExam(${e.id})"><b>${esc(e.title)}</b><br><small>${TYPES[e.exam_type]||''} · ${e.duration_minutes} মিনিট${e.institution_name?' · '+esc(e.institution_name):''}${e.start_time?'<br>শুরু: '+new Date(e.start_time).toLocaleString('bn-BD'):''}</small></button>`).join(''):'<p class="card">এখন কোনো পরীক্ষা নেই।</p>'}`,'exams'));
 }
-async function byCode(){
-  const c=$('#code').value.trim();if(!c)return;
-  const {data}=await sb.from('exams').select('id').eq('share_code',c).eq('status','published').maybeSingle();
-  if(!data)return alert('এই কোডে কোনো পরীক্ষা পাওয়া যায়নি');
+async function joinByCode(c){
+  const {data,error}=await sb.rpc('join_exam',{p_code:c});
+  if(error){alert(error.message);return examsView()}
   openExam(data.id);
 }
+function byCode(){const c=$('#code').value.trim();if(c)joinByCode(c)}
 async function openExam(id){
   const {data:aid,error}=await sb.rpc('start_attempt',{p_exam_id:id});
-  if(error)return alert(error.message);
+  if(error){alert(error.message);return examsView()}
   const [{data:att},{data:ex}]=await Promise.all([sb.from('attempts').select('*').eq('id',aid).single(),sb.from('exams').select('*').eq('id',id).single()]);
   if(att.submitted_at)return resultView({score:att.score,correct:att.correct_count,wrong:att.wrong_count,skipped:att.skipped_count},att.id,ex.title);
   const {data:qs,error:e2}=await sb.from('exam_questions').select('sort_order,mcqs(id,question,option_a,option_b,option_c,option_d)').eq('exam_id',id).order('sort_order');
