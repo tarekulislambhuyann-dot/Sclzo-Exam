@@ -23,10 +23,15 @@ button{font:inherit;cursor:pointer}
 .item{display:block;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px #0002}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid #ddd}
 nav button{flex:1;padding:14px;border:0;background:none;color:#667;font-weight:600}nav .on{color:#4338ca;border-top:3px solid #4338ca}
+.dots{background:none;border:0;color:#fff;font-size:24px;line-height:1;padding:0 6px}
+.mn{position:fixed;top:50px;right:10px;background:#fff;border-radius:12px;box-shadow:0 4px 18px #0004;z-index:20;min-width:220px;overflow:hidden}
+.mn button,.mn a{display:block;width:100%;text-align:left;padding:14px;border:0;background:#fff;color:#1f2430;text-decoration:none;font-size:16px;border-bottom:1px solid #eee}
+.av{width:72px;height:72px;border-radius:50%;object-fit:cover;background:#e5e7f5;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#4338ca}
+.wal{background:linear-gradient(135deg,#4338ca,#6d5df0);color:#fff;border-radius:14px;padding:16px;margin-bottom:12px}
+.wal .big{color:#fff}.wal small{color:#dfe}
+.bdg{display:inline-block;background:#e5e7f5;color:#4338ca;border-radius:8px;padding:2px 8px;font-size:13px}
+details.card summary{font-weight:600;cursor:pointer}details.card p{white-space:pre-wrap;margin:8px 0 0}
 .tm{background:#fff;color:#4338ca;padding:2px 10px;border-radius:8px}.big{font-size:34px;font-weight:800;color:#4338ca}
-.dots{background:none;border:0;color:#fff;font-size:26px;line-height:1;padding:0 8px}
-.mn{position:fixed;top:50px;right:10px;background:#fff;border-radius:10px;box-shadow:0 4px 16px #0004;z-index:20;min-width:210px;overflow:hidden}
-.mn button{display:block;width:100%;text-align:left;padding:14px;border:0;background:none;font-size:16px}
 </style>
 </head>
 <body>
@@ -42,12 +47,23 @@ const show=h=>{$('#app').innerHTML=h};
 const BN={a:'ক',b:'খ',c:'গ',d:'ঘ'};
 const TYPES={chapter_test:'চ্যাপ্টার টেস্ট',class_test:'ক্লাস টেস্ট',weekly:'সাপ্তাহিক',model_test:'মডেল টেস্ট',half_yearly:'অর্ধবার্ষিক',final:'বার্ষিক'};
 const CATS=[5,6,7,8,9,10,11,12].map(c=>['c'+c,'ক্লাস '+c]).concat([['ssc','SSC'],['hsc','HSC'],['admission','ভর্তি পরীক্ষা'],['job','চাকরি']]);
-let me=null,profile={},S={};
+let me=null,profile={},S={sub:{active:false,fee:20,balance:0}};
+const money=n=>Number(n||0).toFixed(2).replace(/\.00$/,'');
+const isStaff=()=>['teacher','admin'].includes(profile.role);
+const avUrl=()=>profile.avatar_v?`${SUPABASE_URL}/storage/v1/object/public/avatars/${me.id}/avatar.jpg?v=${profile.avatar_v}`:'';
 
 function shell(t,body,tabk){
-  return `<header><span>${esc(t)}</span>${tabk?'<button class="dots" onclick="menu()">⋮</button>':''}</header><main>${body}</main>`+(tabk?`<nav>${[['practice','প্র্যাকটিস'],['exams','পরীক্ষা'],['me','প্রোফাইল']].concat(['teacher','admin'].includes(profile.role)?[['panel','টিচার প্যানেল']]:[]).map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="tab('${k}')">${n}</button>`).join('')}</nav>`:'');
+  return `<header><span>${esc(t)}</span>${me?'<button class="dots" onclick="menu(event)">⋮</button>':''}</header><main>${body}</main>`+(tabk?`<nav>${[['practice','প্র্যাকটিস'],['exams','পরীক্ষা'],['digest','ডাইজেস্ট'],['me','প্রোফাইল']].map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="tab('${k}')">${n}</button>`).join('')}</nav>`:'');
 }
-function tab(k){({practice:practiceHome,exams:examsView,me:meView,panel:()=>{location.href='/admin.html'}})[k]()}
+function tab(k){({practice:practiceHome,exams:examsView,digest:digestHome,me:meView})[k]()}
+function menu(ev){
+  if(ev)ev.stopPropagation();
+  if($('#mn')){$('#mn').remove();return}
+  const d=document.createElement('div');d.id='mn';d.className='mn';
+  d.innerHTML=`<button onclick="dashView('mine')">📊 ড্যাশবোর্ড / পরীক্ষার হিস্টরি</button>${isStaff()?`<button onclick="dashView('students')">👥 আমার স্টুডেন্টদের ফলাফল</button><a href="/admin.html">🧑‍🏫 টিচার / অ্যাডমিন প্যানেল</a>`:''}<button onclick="topupView()">💰 ব্যালেন্স রিচার্জ</button><button onclick="logout()">🚪 লগআউট</button>`;
+  d.onclick=()=>d.remove();document.body.appendChild(d);
+}
+document.addEventListener('click',()=>{const m=$('#mn');if(m)m.remove()});
 function opts(m,sel,cor,tag='button'){
   return ['a','b','c','d'].map(k=>{let c='opt';
     if(cor){if(k===cor)c+=' ok';else if(k===sel)c+=' bad'}else if(k===sel)c+=' sel';
@@ -58,7 +74,7 @@ function opts(m,sel,cor,tag='button'){
 function authView(mode){
   const reg=mode==='reg';
   show(`<header>Sclzo Exam</header><main><div class="card"><h2>${reg?'নতুন অ্যাকাউন্ট':'লগইন'}</h2>
-  ${reg?`<select id="at" onchange="atChg()"><option value="student">আমি স্টুডেন্ট</option><option value="teacher">আমি টিচার</option><option value="institute">আমি প্রতিষ্ঠান (স্কুল/কোচিং)</option></select><input id="nm" placeholder="আপনার নাম"><input id="inst" placeholder="প্রতিষ্ঠানের নাম" style="display:none"><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
+  ${reg?`<input id="nm" placeholder="আপনার নাম"><select id="ty"><option value="student">আমি স্টুডেন্ট</option><option value="teacher">আমি টিচার</option><option value="institution">আমি প্রতিষ্ঠান</option></select><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
   <input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
   <button class="btn" onclick="doAuth('${mode}')">${reg?'রেজিস্টার':'লগইন'}</button>
   <button class="link" onclick="authView('${reg?'login':'reg'}')">${reg?'আগে থেকেই অ্যাকাউন্ট আছে? লগইন':'নতুন? অ্যাকাউন্ট খুলুন'}</button></div></main>`);
@@ -67,30 +83,30 @@ async function doAuth(mode){
   const email=$('#em').value.trim(),pw=$('#pw').value;
   if(!email||!pw)return alert('ইমেইল ও পাসওয়ার্ড দিন');
   if(mode==='reg'){
-    const name=$('#nm').value.trim(),cl=+$('#cl').value||null,at=$('#at').value,inst=$('#inst').value.trim();
-    if(at!=='student'&&!inst)return alert('প্রতিষ্ঠানের নাম লিখুন');
+    const name=$('#nm').value.trim(),cl=+$('#cl').value||null;
     const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{full_name:name}}});
     if(error)return alert(error.message);
     if(!data.session)return alert('ইমেইল কনফার্ম করে তারপর লগইন করুন');
-    const up=at==='student'?{class_level:cl}:{institution_name:inst,requested_role:'teacher'};
-    const {error:e2}=await sb.from('profiles').update(up).eq('id',data.user.id);
-    if(e2)alert(e2.message);
-    else if(at!=='student')alert('রেজিস্টার হয়েছে ✅ অ্যাডমিন অনুমোদন দিলে আপনি টিচার প্যানেলে (/admin.html) ঢুকতে পারবেন। ততক্ষণ এই অ্যাপ স্টুডেন্ট হিসেবে ব্যবহার করতে পারবেন।');
+    await sb.from('profiles').update({class_level:cl}).eq('id',data.user.id);
+    if($('#ty').value!=='student')await sb.from('profiles').update({requested_role:'teacher'}).eq('id',data.user.id);
   }else{
     const {error}=await sb.auth.signInWithPassword({email,password:pw});
     if(error)return alert(error.message);
   }
   boot();
 }
-function atChg(){const t=$('#at').value!=='student';$('#inst').style.display=t?'block':'none';$('#cl').style.display=t?'none':'block'}
+async function refreshSub(){
+  try{const {data}=await sb.rpc('ensure_subscription');if(data)S.sub=data}catch(e){}
+}
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
   if(!session)return authView('login');
   me=session.user;
   const {data}=await sb.from('profiles').select('*').eq('id',me.id).single();
   profile=data||{};
-  const lc=new URLSearchParams(location.search).get('exam');
-  if(lc){history.replaceState(null,'',location.pathname);return joinByCode(lc)}
+  await refreshSub();
+  const code=(new URLSearchParams(location.search).get('exam')||'').replace(/[^A-Za-z0-9_-]/g,'');
+  if(code){history.replaceState(null,'',location.pathname);return joinView(code)}
   practiceHome();
 }
 
@@ -134,32 +150,35 @@ function pQ(){
 }
 
 /* ---------- EXAMS ---------- */
+const lockCard=()=>`<div class="card"><h3>⛔ মাসিক ফি বাকি</h3><p>পরীক্ষা ও ডাইজেস্ট চালাতে মাসিক ৳${money(S.sub.fee)} লাগে। আপনার ব্যালেন্স ৳${money(S.sub.balance)}।</p><button class="btn" onclick="topupView()">💰 ব্যালেন্স রিচার্জ করুন</button><button class="btn2" onclick="refreshSub().then(()=>tab('me'))">রিচার্জের পর রিফ্রেশ</button></div>`;
 async function examsView(){
   show(shell('পরীক্ষা','<p>লোড হচ্ছে…</p>','exams'));
+  await refreshSub();
   const {data}=await sb.from('exams').select('id,title,exam_type,duration_minutes,institution_name,start_time,end_time,class_level').eq('status','published').order('created_at',{ascending:false}).limit(40);
   const now=Date.now();
   const list=(data||[]).filter(e=>(!e.end_time||new Date(e.end_time)>now)&&(e.class_level==null||e.class_level==profile.class_level));
-  show(shell('পরীক্ষা',`<div class="card"><b>এক্সাম কোড আছে?</b><input id="code" placeholder="কোড লিখুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
+  show(shell('পরীক্ষা',`${S.sub.active?'':lockCard()}<div class="card"><b>এক্সাম কোড আছে?</b><input id="code" placeholder="কোড লিখুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
   ${list.length?list.map(e=>`<button class="item" onclick="openExam(${e.id})"><b>${esc(e.title)}</b><br><small>${TYPES[e.exam_type]||''} · ${e.duration_minutes} মিনিট${e.institution_name?' · '+esc(e.institution_name):''}${e.start_time?'<br>শুরু: '+new Date(e.start_time).toLocaleString('bn-BD'):''}</small></button>`).join(''):'<p class="card">এখন কোনো পরীক্ষা নেই।</p>'}`,'exams'));
 }
-function joinByCode(c){
-  S.code=c;
-  show(shell('পরিচয় দিন',`<div class="card"><h3>পরীক্ষায় ঢোকার আগে আপনার পরিচয় দিন</h3><small>শিক্ষক এগুলো দেখে আপনাকে চিনবেন, তাই সঠিক তথ্য দিন।</small>
-  <input id="jn" placeholder="আপনার পুরো নাম" value="${esc(profile.full_name||'')}"><input id="jr" placeholder="রোল নম্বর">
-  <input id="ji" placeholder="প্রতিষ্ঠানের নাম" value="${esc(profile.institution_name||'')}"><input id="jc" placeholder="ক্লাস / শ্রেণি" value="${profile.class_level?'ক্লাস '+profile.class_level:''}">
-  <button class="btn" onclick="doJoin()">পরীক্ষায় ঢুকুন</button><button class="link" onclick="examsView()">বাতিল</button></div>`));
+function byCode(){
+  const c=$('#code').value.trim().replace(/[^A-Za-z0-9_-]/g,'');if(!c)return;
+  joinView(c);
+}
+function joinView(code){
+  S.code=code;
+  show(shell('পরীক্ষায় যোগ দিন',`<div class="card"><h3>আপনার পরিচয় দিন</h3><small>শিক্ষক ফলাফলে আপনাকে চেনার জন্য এগুলো দেখবেন।</small>
+  <input id="jn" placeholder="নাম" value="${esc(profile.full_name||'')}"><input id="jr" placeholder="রোল"><input id="ji" placeholder="প্রতিষ্ঠানের নাম"><input id="jc" placeholder="ক্লাস" value="${profile.class_level?'ক্লাস '+profile.class_level:''}">
+  <button class="btn" onclick="doJoin()">যোগ দিন</button><button class="link" onclick="examsView()">← ফিরে যান</button></div>`,'exams'));
 }
 async function doJoin(){
-  const g=k=>$('#'+k).value.trim(),n=g('jn'),r=g('jr'),inst=g('ji'),cl=g('jc');
-  if(!n||!r||!inst||!cl)return alert('নাম, রোল, প্রতিষ্ঠান ও ক্লাস সব লিখুন');
-  const {data,error}=await sb.rpc('join_exam',{p_code:S.code,p_name:n,p_roll:r,p_inst:inst,p_class:cl});
-  if(error){alert(error.message);return examsView()}
+  const g=i=>$(i).value.trim();
+  const {data,error}=await sb.rpc('join_exam',{p_code:S.code,p_name:g('#jn'),p_roll:g('#jr'),p_inst:g('#ji'),p_class:g('#jc')});
+  if(error)return alert(error.message);
   openExam(data.id);
 }
-function byCode(){const c=$('#code').value.trim();if(c)joinByCode(c)}
 async function openExam(id,retake){
-  const {data:aid,error}=await (retake?sb.rpc('start_retake',{p_exam_id:id}):sb.rpc('start_attempt',{p_exam_id:id}));
-  if(error){alert(error.message);return examsView()}
+  const {data:aid,error}=await sb.rpc(retake?'start_retake':'start_attempt',{p_exam_id:id});
+  if(error){alert(error.message);if(/ফি/.test(error.message))return topupView();return}
   const [{data:att},{data:ex}]=await Promise.all([sb.from('attempts').select('*').eq('id',aid).single(),sb.from('exams').select('*').eq('id',id).single()]);
   if(att.submitted_at)return resultView({score:att.score,correct:att.correct_count,wrong:att.wrong_count,skipped:att.skipped_count},att.id,ex.title);
   const {data:qs,error:e2}=await sb.from('exam_questions').select('sort_order,mcqs(id,question,option_a,option_b,option_c,option_d)').eq('exam_id',id).order('sort_order');
@@ -193,10 +212,10 @@ async function submitX(auto){
   if(error){alert(error.message);return examsView()}
   localStorage.removeItem('ans_'+x.att.id);
   if(auto)alert('সময় শেষ! উত্তর জমা হয়েছে।');
-  resultView(data,x.att.id,x.ex.title,x.att.is_retake);
+  resultView(data,x.att.id,x.ex.title);
 }
-function resultView(r,id,title,rt){
-  show(shell('ফলাফল',`<div class="card" style="text-align:center"><small>${esc(title)}</small>${rt?'<br><small>🔁 রিটেক — এই ফল র‍্যাংকিংয়ে যোগ হবে না</small>':''}<p class="big">${r.score}</p>
+function resultView(r,id,title){
+  show(shell('ফলাফল',`<div class="card" style="text-align:center"><small>${esc(title)}</small><p class="big">${r.score}</p>
   <p>✅ সঠিক ${r.correct} · ❌ ভুল ${r.wrong} · ⚪ বাদ ${r.skipped}</p>
   <button class="btn" onclick="review(${id})">ভুল ও ব্যাখ্যা দেখুন</button><button class="btn2" onclick="examsView()">পরীক্ষার তালিকা</button></div>`,'exams'));
 }
@@ -206,81 +225,128 @@ async function review(id){
   show(shell('উত্তর ও ব্যাখ্যা',`<button class="link" onclick="tab('me')">← ফিরে যান</button>`+(data||[]).map((m,i)=>`<div class="card"><small>${i+1}. ${m.is_correct?'✅ সঠিক':(m.selected_option?'❌ ভুল':'⚪ উত্তর দাওনি')}</small><h3>${esc(m.question)}</h3>${opts(m,m.selected_option,m.correct_option,'div')}${m.explanation?`<p class="exp">${esc(m.explanation)}</p>`:''}</div>`).join(''),'me'));
 }
 
+/* ---------- DIGEST (read only) ---------- */
+async function digestHome(key){
+  if(!S.sub.active){await refreshSub()}
+  if(!S.sub.active)return show(shell('ডাইজেস্ট',lockCard(),'digest'));
+  key=key||(profile.class_level?'c'+profile.class_level:'ssc');
+  show(shell('ডাইজেস্ট','<p>লোড হচ্ছে…</p>','digest'));
+  let q=sb.from('subjects').select('id,name').order('name');
+  q=/^c\d+$/.test(key)?q.eq('category','school').eq('class_level',+key.slice(1)):q.eq('category',key);
+  const {data}=await q;const subs=data||[];S.dsubs=subs;
+  show(shell('ডাইজেস্ট',`<select onchange="digestHome(this.value)">${CATS.map(([k,n])=>`<option value="${k}" ${k===key?'selected':''}>${n}</option>`).join('')}</select>
+  ${subs.length?subs.map((x,i)=>`<button class="item" onclick="digestChapters(${i})">📖 ${esc(x.name)}</button>`).join(''):'<p class="card">এই ক্যাটাগরিতে এখনো কোনো বিষয় নেই।</p>'}`,'digest'));
+}
+async function digestChapters(i){
+  const sub=S.dsubs[i];
+  const {data}=await sb.from('chapters').select('id,name').eq('subject_id',sub.id).order('sort_order');
+  S.dch=data||[];S.dsub=sub;
+  show(shell(sub.name,`<button class="link" onclick="digestHome()">← ফিরে যান</button><button class="item" onclick="digestList(null)">⭐ সব অধ্যায়</button>
+  ${S.dch.map((c,j)=>`<button class="item" onclick="digestList(${j})">${esc(c.name)}</button>`).join('')}`,'digest'));
+}
+async function digestList(j){
+  let q=sb.from('digest_items').select('id,question,answer').eq('subject_id',S.dsub.id).eq('status','approved').order('id').limit(100);
+  if(j!==null)q=q.eq('chapter_id',S.dch[j].id);
+  const {data,error}=await q;if(error)return alert(error.message);
+  show(shell(S.dsub.name,`<button class="link" onclick="digestChapters(S.dsubs.indexOf(S.dsub))">← ফিরে যান</button>
+  ${(data||[]).map(d=>`<details class="card"><summary>${esc(d.question)}</summary><p>${esc(d.answer)}</p></details>`).join('')||'<p class="card">এখানে এখনো কিছু যোগ হয়নি।</p>'}`,'digest'));
+}
+
 /* ---------- PROFILE ---------- */
+const ROLE={student:'স্টুডেন্ট',teacher:'টিচার',admin:'অ্যাডমিন'};
 async function meView(){
   show(shell('প্রোফাইল','<p>লোড হচ্ছে…</p>','me'));
-  const {data:bal}=await sb.rpc('my_balance');
-  const {data}=await sb.from('attempts').select('id,score,correct_count,wrong_count,submitted_at,exams(title)').eq('user_id',me.id).not('submitted_at','is',null).order('submitted_at',{ascending:false}).limit(30);
-  show(shell('প্রোফাইল',`<div class="card">${avatarHtml()}<b>${esc(profile.full_name||me.email)}</b><br><small>${esc(me.email)}</small><br><label class="btn2" style="display:inline-block;width:auto;padding:8px 12px">📷 ছবি আপলোড<input type="file" id="pf" accept="image/*" hidden onchange="upAvatar(this)"></label>${profile.avatar_v?' <button class="btn2" style="width:auto;padding:8px 12px" onclick="delAvatar()">ছবি মুছুন</button>':''}
+  await refreshSub();
+  const sb_=S.sub,u=avUrl();
+  const st=sb_.free?(profile.role==='admin'?'অ্যাডমিন — কোনো ফি নেই':'🎁 ফ্রি অ্যাক্সেস চালু'):(sb_.active?`✅ সাবস্ক্রিপশন চালু · শেষ: ${new Date(sb_.paid_until).toLocaleDateString('bn-BD')}`:`⛔ বন্ধ — মাসিক ফি ৳${money(sb_.fee)}, ব্যালেন্স কম`);
+  show(shell('প্রোফাইল',`<div class="card" style="display:flex;gap:14px;align-items:center">
+    ${u?`<img class="av" src="${u}" alt="">`:`<div class="av">${esc((profile.full_name||me.email||'?')[0].toUpperCase())}</div>`}
+    <div><b>${esc(profile.full_name||me.email)}</b><br><small>${esc(me.email)}</small><br><span class="bdg">${ROLE[profile.role]||'স্টুডেন্ট'}</span>${profile.class_level?` <span class="bdg">ক্লাস ${profile.class_level}</span>`:''}</div></div>
+  <div class="wal"><small>আমার ব্যালেন্স</small><p class="big">৳ ${money(sb_.balance)}</p><small>${st}</small>
+    <div class="row" style="margin-top:10px"><button class="btn2" onclick="topupView()">💰 রিচার্জ</button><button class="btn2" onclick="editView()">✏️ প্রোফাইল এডিট</button></div></div>
+  <button class="btn2" onclick="dashView('mine')">📊 ড্যাশবোর্ড / পরীক্ষার হিস্টরি</button>
+  ${profile.requested_role&&!isStaff()?'<p class="card">⏳ আপনার টিচার/প্রতিষ্ঠানের অনুরোধ অ্যাডমিনের অনুমোদনের অপেক্ষায় আছে।</p>':''}
+  <button class="btn2" onclick="logout()">লগআউট</button>`,'me'));
+}
+function editView(){
+  show(shell('প্রোফাইল এডিট',`<button class="link" onclick="meView()">← ফিরে যান</button><div class="card">
+  <input id="en" placeholder="নাম" value="${esc(profile.full_name||'')}">
   <select id="pc"><option value="">ক্লাস নির্বাচন (বা SSC/HSC/চাকরি)</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}" ${profile.class_level==c?'selected':''}>ক্লাস ${c}</option>`).join('')}</select>
-  <button class="btn" onclick="saveClass()">সেভ করুন</button><button class="btn2" onclick="logout()">লগআউট</button></div>
-  <div class="card">💰 ব্যালেন্স: <b>৳ ${Number(bal||0).toFixed(2)}</b> <button class="btn2" style="width:auto;padding:8px 12px" onclick="walletView()">ওয়ালেট</button> <button class="btn2" style="width:auto;padding:8px 12px" onclick="historyView()">ইতিহাস</button></div><h3>আমার ফলাফল</h3>${(data||[]).length?data.map(a=>`<button class="item" onclick="review(${a.id})"><b>${esc(a.exams?.title||'পরীক্ষা')}</b><br><small>স্কোর ${a.score} · সঠিক ${a.correct_count} · ভুল ${a.wrong_count}</small></button>`).join(''):'<p class="card">এখনো কোনো পরীক্ষা দেননি।</p>'}`,'me'));
+  <small>প্রোফাইল ছবি (ঐচ্ছিক)</small><input id="ph" type="file" accept="image/jpeg,image/png,image/webp">
+  <button class="btn" onclick="saveProfile()">সেভ করুন</button></div>`,'me'));
 }
-async function saveClass(){
-  const v=+$('#pc').value||null;
-  const {error}=await sb.from('profiles').update({class_level:v}).eq('id',me.id);
+function compressImg(file){
+  return new Promise((res,rej)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const M=400,r=Math.min(1,M/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+      const tryQ=q=>c.toBlob(b=>{if(!b)return rej(new Error('ছবি প্রসেস হয়নি'));if(b.size>300000&&q>.4)tryQ(q-.15);else if(b.size>300000)rej(new Error('ছবি অনেক বড়'));else res(b)},'image/jpeg',q);
+      tryQ(.85);
+    };
+    img.onerror=()=>rej(new Error('ছবি খোলা যায়নি'));img.src=url;
+  });
+}
+async function saveProfile(){
+  const name=$('#en').value.trim(),cl=+$('#pc').value||null;
+  if(!name)return alert('নাম লিখুন');
+  const upd={full_name:name,class_level:cl};
+  const f=$('#ph').files[0];
+  if(f){
+    try{
+      const blob=await compressImg(f);
+      const {error:ue}=await sb.storage.from('avatars').upload(me.id+'/avatar.jpg',blob,{upsert:true,contentType:'image/jpeg'});
+      if(ue)return alert(ue.message);
+      upd.avatar_v=Date.now();
+    }catch(e){return alert(e.message)}
+  }
+  const {error}=await sb.from('profiles').update(upd).eq('id',me.id);
   if(error)return alert(error.message);
-  profile.class_level=v;alert('সেভ হয়েছে');
+  Object.assign(profile,upd);alert('সেভ হয়েছে ✅');meView();
 }
-async function logout(){await sb.auth.signOut();authView('login')}
 
-/* ---------- MENU, PHOTO, HISTORY, WALLET ---------- */
-function menu(){
-  const o=$('#mn');if(o){o.remove();return}
-  const d=document.createElement('div');d.id='mn';d.className='mn';
-  d.innerHTML='<button onclick="go(\'history\')">📜 পরীক্ষার ইতিহাস</button><button onclick="go(\'wallet\')">💰 ওয়ালেট</button><button onclick="go(\'me\')">👤 প্রোফাইল</button><button onclick="logout()">🚪 লগআউট</button>';
-  document.body.appendChild(d);
-}
-function go(k){const m=$('#mn');if(m)m.remove();k==='history'?historyView():k==='wallet'?walletView():tab(k)}
-const avatarUrl=()=>SUPABASE_URL+'/storage/v1/object/public/avatars/'+me.id+'/avatar.jpg?v='+profile.avatar_v;
-const avatarHtml=()=>profile.avatar_v?`<img src="${avatarUrl()}" alt="" style="width:84px;height:84px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 8px">`:'<div style="width:84px;height:84px;border-radius:50%;background:#e5e7f5;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:34px">👤</div>';
-function upAvatar(inp){
-  const f=inp.files[0];if(!f)return;
-  if(!f.type.startsWith('image/'))return alert('শুধু ছবি দিন');
-  const rd=new FileReader();
-  rd.onload=()=>{const im=new Image();
-    im.onload=()=>{
-      const c=document.createElement('canvas'),m=Math.min(im.width,im.height);c.width=c.height=256;
-      c.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,256,256);
-      c.toBlob(async b=>{
-        const {error}=await sb.storage.from('avatars').upload(me.id+'/avatar.jpg',b,{upsert:true,contentType:'image/jpeg'});
-        if(error)return alert(error.message);
-        const v=Date.now();await sb.from('profiles').update({avatar_v:v}).eq('id',me.id);profile.avatar_v=v;meView();
-      },'image/jpeg',0.85);
-    };im.src=rd.result};
-  rd.readAsDataURL(f);
-}
-async function delAvatar(){
-  await sb.storage.from('avatars').remove([me.id+'/avatar.jpg']);
-  await sb.from('profiles').update({avatar_v:null}).eq('id',me.id);profile.avatar_v=null;meView();
-}
-async function historyView(){
-  show(shell('পরীক্ষার ইতিহাস','<p>লোড হচ্ছে…</p>','me'));
-  const {data}=await sb.from('attempts').select('id,exam_id,score,correct_count,wrong_count,skipped_count,submitted_at,is_retake,exams(title)').eq('user_id',me.id).not('submitted_at','is',null).order('submitted_at',{ascending:false}).limit(60);
-  show(shell('পরীক্ষার ইতিহাস',(data||[]).map(a=>`<div class="card"><b>${esc(a.exams?.title||'পরীক্ষা')}</b> ${a.is_retake?'<small>(রিটেক — র‍্যাংকিংয়ে যোগ হয়নি)</small>':''}<br><small>${new Date(a.submitted_at).toLocaleString('bn-BD')}<br>স্কোর ${a.score} · ✅ ${a.correct_count} · ❌ ${a.wrong_count} · ⚪ ${a.skipped_count}</small><br>
-  <button class="btn2" style="width:auto;padding:8px 12px" onclick="review(${a.id})">ভুলগুলো দেখুন</button> <button class="btn2" style="width:auto;padding:8px 12px" onclick="openExam(${a.exam_id},true)">🔁 আবার দিন</button></div>`).join('')||'<p class="card">এখনো কোনো পরীক্ষা দেননি।</p>','me'));
-}
-async function walletView(){
-  show(shell('ওয়ালেট','<p>লোড হচ্ছে…</p>','me'));
-  const [b,st,rq,tx]=await Promise.all([sb.rpc('my_balance'),sb.from('app_settings').select('key,value'),
-    sb.from('topup_requests').select('id,method,amount,trx_id,status,admin_note').order('id',{ascending:false}).limit(10),
-    sb.from('wallet_tx').select('kind,amount,note,created_at').order('id',{ascending:false}).limit(20)]);
+/* ---------- WALLET TOP-UP ---------- */
+async function topupView(){
+  show(shell('ব্যালেন্স রিচার্জ','<p>লোড হচ্ছে…</p>','me'));
+  const [st,rq,tx]=await Promise.all([
+    sb.from('app_settings').select('key,value'),
+    sb.from('topup_requests').select('id,method,amount,status,admin_note').eq('user_id',me.id).order('id',{ascending:false}).limit(10),
+    sb.from('wallet_tx').select('kind,amount,note,created_at').eq('user_id',me.id).order('id',{ascending:false}).limit(15)]);
   const C={};(st.data||[]).forEach(x=>C[x.key]=x.value);
-  const ST={pending:'⏳ যাচাইয়ের অপেক্ষায়',approved:'✅ অনুমোদিত',rejected:'❌ বাতিল'};
-  show(shell('ওয়ালেট',`<div class="card" style="text-align:center"><small>বর্তমান ব্যালেন্স</small><p class="big">৳ ${Number(b.data||0).toFixed(2)}</p></div>
-  <div class="card"><h3>টাকা যোগ করুন</h3>
-  <small>১) নিচের নম্বরে Send Money করুন:<br>${C.bkash_number?'bKash: <b>'+esc(C.bkash_number)+'</b><br>':''}${C.nagad_number?'Nagad: <b>'+esc(C.nagad_number)+'</b><br>':''}${C.bank_info?'ব্যাংক: '+esc(C.bank_info)+'<br>':''}${esc(C.pay_note||'')}<br>২) তারপর নিচে TrxID লিখে জমা দিন। যাচাইয়ের পর ব্যালেন্সে যোগ হবে।</small>
-  <select id="wm"><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="bank">ব্যাংক</option></select>
-  <input id="wa" type="number" inputmode="decimal" placeholder="টাকার পরিমাণ"><input id="ws" placeholder="যে নম্বর/অ্যাকাউন্ট থেকে পাঠিয়েছেন"><input id="wt" placeholder="ট্রানজেকশন আইডি (TrxID)">
-  <button class="btn" onclick="topup()">অনুরোধ জমা দিন</button></div>
-  <h3>আমার অনুরোধ</h3>${(rq.data||[]).map(r=>`<div class="card"><b>৳ ${r.amount}</b> · ${esc(r.method)} · ${esc(r.trx_id)}<br><small>${ST[r.status]||''}${r.admin_note?' — '+esc(r.admin_note):''}</small></div>`).join('')||'<p class="card">কোনো অনুরোধ নেই</p>'}
-  <h3>লেনদেনের ইতিহাস</h3>${(tx.data||[]).map(t=>`<div class="card">${t.amount>0?'➕':'➖'} ৳ ${Math.abs(t.amount)} <small>${esc(t.note||t.kind)} · ${new Date(t.created_at).toLocaleDateString('bn-BD')}</small></div>`).join('')||'<p class="card">কোনো লেনদেন নেই</p>'}`,'me'));
+  const SL={pending:'⏳ অপেক্ষায়',approved:'✅ অনুমোদিত',rejected:'❌ বাতিল'};
+  show(shell('ব্যালেন্স রিচার্জ',`<button class="link" onclick="meView()">← ফিরে যান</button>
+  <div class="card"><h3>টাকা পাঠান</h3>
+    ${C.bkash_number?`<p>bKash: <b>${esc(C.bkash_number)}</b></p>`:''}${C.nagad_number?`<p>Nagad: <b>${esc(C.nagad_number)}</b></p>`:''}${C.bank_info?`<p>ব্যাংক: ${esc(C.bank_info)}</p>`:''}${C.pay_note?`<small>${esc(C.pay_note)}</small>`:''}
+    <small>টাকা পাঠিয়ে নিচে ট্রানজেকশন আইডি দিন। অ্যাডমিন যাচাই করলে ব্যালেন্সে যোগ হবে।</small>
+    <select id="tm_"><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="bank">ব্যাংক</option></select>
+    <input id="ta" type="number" placeholder="টাকার পরিমাণ"><input id="ts" placeholder="যে নম্বর/অ্যাকাউন্ট থেকে পাঠিয়েছেন"><input id="tt" placeholder="ট্রানজেকশন আইডি (TrxID)">
+    <button class="btn" onclick="sendTopup()">অনুরোধ পাঠান</button></div>
+  ${(rq.data||[]).length?'<h3>আমার অনুরোধ</h3>'+rq.data.map(r=>`<div class="card">৳${money(r.amount)} · ${esc(r.method)} · ${SL[r.status]||r.status}${r.admin_note?`<br><small>${esc(r.admin_note)}</small>`:''}</div>`).join(''):''}
+  ${(tx.data||[]).length?'<h3>লেনদেন</h3>'+tx.data.map(t=>`<div class="card"><b style="color:${t.amount>0?'#16a34a':'#dc2626'}">${t.amount>0?'+':''}${money(t.amount)}</b> · ${esc(t.note||t.kind)}<br><small>${new Date(t.created_at).toLocaleString('bn-BD')}</small></div>`).join(''):''}`,'me'));
 }
-async function topup(){
-  const {error}=await sb.rpc('request_topup',{p_method:$('#wm').value,p_amount:+$('#wa').value,p_sender:$('#ws').value.trim(),p_trx:$('#wt').value.trim()});
+async function sendTopup(){
+  const g=i=>$(i).value.trim();
+  const {error}=await sb.rpc('request_topup',{p_method:$('#tm_').value,p_amount:+g('#ta'),p_sender:g('#ts'),p_trx:g('#tt')});
   if(error)return alert(error.message);
-  alert('অনুরোধ জমা হয়েছে ✅ যাচাইয়ের পর ব্যালেন্সে যোগ হবে।');walletView();
+  alert('অনুরোধ পাঠানো হয়েছে ✅ অ্যাডমিন যাচাই করলে ব্যালেন্স যোগ হবে।');topupView();
 }
+
+/* ---------- DASHBOARD (three-dot menu) ---------- */
+async function dashView(kind){
+  show(shell('ড্যাশবোর্ড','<p>লোড হচ্ছে…</p>','me'));
+  const bar=`<div class="row" style="margin-bottom:10px"><button class="${kind==='mine'?'btn':'btn2'}" onclick="dashView('mine')">আমার হিস্টরি</button>${isStaff()?`<button class="${kind==='students'?'btn':'btn2'}" onclick="dashView('students')">স্টুডেন্টদের ফলাফল</button>`:''}</div>`;
+  if(kind==='students'&&isStaff()){
+    const {data,error}=await sb.rpc('teacher_students_history');
+    if(error)return alert(error.message);
+    const G={};(data||[]).forEach(r=>(G[r.exam_id]=G[r.exam_id]||{t:r.exam_title,l:[]}).l.push(r));
+    return show(shell('ড্যাশবোর্ড',bar+(Object.values(G).map(g=>`<div class="card"><b>${esc(g.t)}</b> <small>(${g.l.length} জন)</small>${g.l.map(r=>`<p style="margin:8px 0 0"><b>${esc(r.student_name||'নাম নেই')}</b> · রোল ${esc(r.roll||'-')} · <b>${r.score}</b><br><small>${esc(r.institution||'-')} · ${esc(r.class_name||'-')} · ✅ ${r.correct_count} ❌ ${r.wrong_count}</small></p>`).join('')}</div>`).join('')||'<p class="card">এখনো কোনো স্টুডেন্ট পরীক্ষা দেয়নি।</p>'),'me'));
+  }
+  const {data}=await sb.from('attempts').select('id,exam_id,score,correct_count,wrong_count,submitted_at,is_retake,exams(title)').eq('user_id',me.id).not('submitted_at','is',null).order('submitted_at',{ascending:false}).limit(40);
+  show(shell('ড্যাশবোর্ড',bar+((data||[]).map(a=>`<div class="card"><b>${esc(a.exams?.title||'পরীক্ষা')}</b>${a.is_retake?' <span class="bdg">রিটেক</span>':''}<br><small>স্কোর ${a.score} · সঠিক ${a.correct_count} · ভুল ${a.wrong_count}<br>${new Date(a.submitted_at).toLocaleString('bn-BD')}</small>
+    <button class="btn2" onclick="review(${a.id})">ভুল ও ব্যাখ্যা দেখুন</button>${a.is_retake?'':`<button class="btn2" onclick="if(confirm('আবার দেবেন? রিটেক র‍্যাংকিংয়ে ধরা হবে না।'))openExam(${a.exam_id},true)">🔁 আবার দিন (র‍্যাংকে ধরা হবে না)</button>`}</div>`).join('')||'<p class="card">এখনো কোনো পরীক্ষা দেননি।</p>'),'me'));
+}
+async function logout(){await sb.auth.signOut();me=null;profile={};authView('login')}
 
 boot();
 </script>
