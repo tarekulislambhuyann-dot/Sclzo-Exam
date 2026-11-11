@@ -33,17 +33,20 @@ const show=h=>{$('#app').innerHTML=h};
 const TYPES={chapter_test:'চ্যাপ্টার টেস্ট',class_test:'ক্লাস টেস্ট',weekly:'সাপ্তাহিক',model_test:'মডেল টেস্ট',half_yearly:'অর্ধবার্ষিক',final:'বার্ষিক'};
 const CATS=[5,6,7,8,9,10,11,12].map(c=>['c'+c,'ক্লাস '+c]).concat([['ssc','SSC'],['hsc','HSC'],['admission','ভর্তি'],['job','চাকরি']]);
 const catInfo=k=>/^c\d+$/.test(k)?{category:'school',class_level:+k.slice(1)}:{category:k,class_level:null};
-let me=null,profile={},isAdmin=false,sel=new Set(),loaded=[];
+let me=null,profile={},isAdmin=false,sel=new Set(),loaded=[],subOk=true,subInfo={};
+const dbErr=e=>(e.code==='42501'||/row-level security|permission denied/i.test(e.message))?'অনুমতি নেই। Supabase-এ sclzo_part5.sql চালানো হয়েছে কিনা দেখুন। ('+e.message+')':e.message;
+const money=n=>Number(n||0).toFixed(2).replace(/\.00$/,'');
 
 function ui(tabk,body){
-  const T=[['mcq','➕ MCQ'],['imp','📥 ইমপোর্ট'],['exam','📝 পরীক্ষা'],['res','📊 ফলাফল']].concat(isAdmin?[['appr','✅ অনুমোদন'],['sub','📚 বিষয়'],['usr','👥 ইউজার'],['pay','💰 পেমেন্ট']]:[['mine','🗂 আমার MCQ']]);
+  const T=[['mcq','➕ MCQ'],['imp','📥 ইমপোর্ট'],['exam','📝 পরীক্ষা'],['res','📊 ফলাফল'],['sub','📚 বিষয়/অধ্যায়'],['dig','📖 ডাইজেস্ট']].concat(isAdmin?[['appr','✅ অনুমোদন'],['usr','👥 ইউজার'],['pay','💰 পেমেন্ট']]:[['mine','🗂 আমার MCQ']]);
+  const warn=(!isAdmin&&!subOk)?`<div class="card" style="background:#fff7ed;color:#9a3412">⚠️ মাসিক ফি ৳${money(subInfo.fee||200)} বাকি (ব্যালেন্স ৳${money(subInfo.balance)})। স্টুডেন্ট অ্যাপের প্রোফাইল থেকে রিচার্জ করুন। ততক্ষণ নতুন পরীক্ষা বা ডাইজেস্ট যোগ হবে না।</div>`:'';
   show(`<header><span>Sclzo ${isAdmin?'Admin':'Teacher'}</span><button class="link" style="color:#fff" onclick="logout()">লগআউট</button></header>
-  <div class="tabs">${T.map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="go('${k}')">${n}</button>`).join('')}</div><main>${body}</main>`);
+  <div class="tabs">${T.map(([k,n])=>`<button class="${k===tabk?'on':''}" onclick="go('${k}')">${n}</button>`).join('')}</div><main>${warn}${body}</main>`);
 }
-function go(k){({mcq:vMcq,imp:vImp,exam:vExam,res:vRes,appr:vAppr,sub:vSub,usr:vUsr,pay:vPay,mine:vMine})[k]()}
+function go(k){({mcq:vMcq,imp:vImp,exam:vExam,res:vRes,appr:vAppr,sub:vSub,dig:vDig,usr:vUsr,pay:vPay,mine:vMine})[k]()}
 
 /* subject picker */
-const pk=p=>`<select id="${p}cat" onchange="loadSubs('${p}')">${CATS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><select id="${p}sub" onchange="loadChs('${p}')"></select><select id="${p}ch"></select>`;
+const pk=(p,noCh)=>`<select id="${p}cat" onchange="loadSubs('${p}')">${CATS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><select id="${p}sub" onchange="loadChs('${p}')"></select>${noCh?'':`<select id="${p}ch"></select>`}`;
 async function loadSubs(p){
   const key=$('#'+p+'cat').value;let q=sb.from('subjects').select('id,name').order('name');
   const i=catInfo(key);q=i.class_level?q.eq('category','school').eq('class_level',i.class_level):q.eq('category',key);
@@ -52,10 +55,11 @@ async function loadSubs(p){
   loadChs(p);
 }
 async function loadChs(p){
-  const sid=$('#'+p+'sub').value;
-  if(!sid){$('#'+p+'ch').innerHTML='<option value="">— অধ্যায় নেই —</option>';return}
+  const sid=$('#'+p+'sub').value,el=$('#'+p+'ch'),L=p==='c'?$('#chl'):null;
+  if(!sid){if(el)el.innerHTML='<option value="">— অধ্যায় নেই —</option>';if(L)L.innerHTML='';return}
   const {data}=await sb.from('chapters').select('id,name').eq('subject_id',sid).order('sort_order');
-  $('#'+p+'ch').innerHTML='<option value="">সব অধ্যায়</option>'+(data||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  if(el)el.innerHTML='<option value="">সব অধ্যায়</option>'+(data||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  if(L)L.innerHTML=(data||[]).length?'<small>এই বিষয়ের অধ্যায়:</small>'+data.map((c,i)=>`<div class="q">${i+1}. ${esc(c.name)}</div>`).join(''):'<small>এখনো কোনো অধ্যায় নেই</small>';
 }
 const STATUS=()=>isAdmin?{source:'main',status:'approved'}:{source:'teacher',status:'private'};
 
@@ -96,6 +100,7 @@ async function boot(){
     ${profile.requested_role?'<p>⏳ আপনার টিচার/প্রতিষ্ঠানের অনুরোধ অ্যাডমিনের অনুমোদনের অপেক্ষায় আছে।</p>':''}
     <button class="btn" onclick="logout()">অন্য অ্যাকাউন্টে লগইন করুন</button><a class="link" href="/">← স্টুডেন্ট অ্যাপে যান</a></div></main>`);return;
   }
+  if(!isAdmin){try{const {data:sd}=await sb.rpc('ensure_subscription');subInfo=sd||{};subOk=!!subInfo.active}catch(e){subOk=true}}
   vMcq();
 }
 
@@ -226,7 +231,7 @@ async function makeExam(){
     start_time:$('#st').value?new Date($('#st').value).toISOString():null,
     end_time:$('#en').value?new Date($('#en').value).toISOString():null,status:'published',visibility:isAdmin?'public':'private'};
   const {data,error}=await sb.from('exams').insert(row).select('id,share_code').single();
-  if(error)return alert(error.message);
+  if(error)return alert(!isAdmin&&!subOk?'মাসিক ফি বাকি — ব্যালেন্স রিচার্জ করুন, তারপর আবার চেষ্টা করুন':error.message);
   const {error:e2}=await sb.from('exam_questions').insert(ids.map((id,i)=>({exam_id:data.id,mcq_id:id,sort_order:i})));
   if(e2)return alert(e2.message);
   showLink(data.share_code,title);
@@ -279,8 +284,10 @@ async function vAppr(){
   const {data}=await sb.from('mcqs').select('id,question,option_a,option_b,option_c,option_d').eq('status','pending').order('id').limit(30);
   const ids=(data||[]).map(m=>m.id),K={};
   if(ids.length){const {data:k}=await sb.from('mcq_keys').select('mcq_id,correct_option').in('mcq_id',ids);(k||[]).forEach(x=>K[x.mcq_id]=x.correct_option)}
+  const {data:dg}=await sb.from('digest_items').select('id,question,answer').eq('status','pending').order('id').limit(30);
+  const dgHtml=(dg||[]).length?'<h3>ডাইজেস্ট অনুমোদন</h3>'+dg.map(d=>`<div class="card"><b>${esc(d.question)}</b><br><small style="white-space:pre-wrap">${esc(d.answer)}</small><br><button class="btn2" onclick="setDig(${d.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setDig(${d.id},'rejected')">❌ বাতিল</button></div>`).join(''):'';
   ui('appr',(data||[]).map(m=>`<div class="card"><b>${esc(m.question)}</b><br><small>ক) ${esc(m.option_a)} খ) ${esc(m.option_b)} গ) ${esc(m.option_c)} ঘ) ${esc(m.option_d)}<br>সঠিক: ${esc(K[m.id]||'?')}</small><br>
-  <button class="btn2" onclick="setSt(${m.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setSt(${m.id},'rejected')">❌ বাতিল</button></div>`).join('')||'<p class="card">কোনো অপেক্ষমাণ MCQ নেই</p>');
+  <button class="btn2" onclick="setSt(${m.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setSt(${m.id},'rejected')">❌ বাতিল</button></div>`).join('')+dgHtml||'<p class="card">কোনো অপেক্ষমাণ MCQ নেই</p>');
 }
 async function setSt(id,st){
   const u=st==='approved'?{status:st,source:'main'}:{status:st};
@@ -291,19 +298,56 @@ async function setSt(id,st){
 /* ---------- ADMIN: SUBJECTS & CHAPTERS ---------- */
 function vSub(){
   ui('sub',`<div class="card"><h3>নতুন বিষয়</h3><select id="sc">${CATS.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><input id="sn" placeholder="বিষয়ের নাম (যেমন: গণিত)"><button class="btn" onclick="addSub()">বিষয় যোগ করুন</button></div>
-  <div class="card"><h3>নতুন অধ্যায়</h3>${pk('c')}<input id="cn" placeholder="অধ্যায়ের নাম"><button class="btn" onclick="addCh()">অধ্যায় যোগ করুন</button></div>`);
+  <div class="card"><h3>নতুন অধ্যায়</h3>${pk('c',1)}<input id="cn" placeholder="অধ্যায়ের নাম"><button class="btn" onclick="addCh()">অধ্যায় যোগ করুন</button><div id="chl" style="margin-top:8px"></div></div>`);
   loadSubs('c');
 }
 async function addSub(){
   const i=catInfo($('#sc').value),name=v('#sn');if(!name)return alert('নাম লিখুন');
+  let dq=sb.from('subjects').select('name').eq('category',i.category);if(i.class_level)dq=dq.eq('class_level',i.class_level);
+  const {data:ex}=await dq;
+  if((ex||[]).some(s=>String(s.name).trim().toLowerCase()===name.toLowerCase()))return alert('এই বিষয় আগেই আছে');
   const {error}=await sb.from('subjects').insert({name,category:i.category,class_level:i.class_level});
-  if(error)return alert(error.message);alert('যোগ হয়েছে ✅');$('#sn').value='';loadSubs('c');
+  if(error)return alert(dbErr(error));
+  alert('যোগ হয়েছে ✅');$('#sn').value='';$('#ccat').value=$('#sc').value;loadSubs('c');
 }
 async function addCh(){
   const sid=+$('#csub').value,name=v('#cn');if(!sid||!name)return alert('বিষয় ও অধ্যায়ের নাম দিন');
-  const {count}=await sb.from('chapters').select('id',{count:'exact',head:true}).eq('subject_id',sid);
-  const {error}=await sb.from('chapters').insert({subject_id:sid,name,sort_order:(count||0)+1});
-  if(error)return alert(error.message);alert('যোগ হয়েছে ✅');$('#cn').value='';loadChs('c');
+  const {data:ex,error:e0}=await sb.from('chapters').select('name').eq('subject_id',sid);
+  if(e0)return alert(dbErr(e0));
+  if((ex||[]).some(c=>String(c.name).trim().toLowerCase()===name.toLowerCase()))return alert('এই অধ্যায় আগেই আছে');
+  const {error}=await sb.from('chapters').insert({subject_id:sid,name,sort_order:(ex||[]).length+1});
+  if(error)return alert(dbErr(error));
+  alert('যোগ হয়েছে ✅');$('#cn').value='';loadChs('c');
+}
+
+/* ---------- DIGEST (admin + teacher add, students read) ---------- */
+function vDig(){
+  ui('dig',`<div class="card"><h3>ডাইজেস্টে প্রশ্ন যোগ</h3>${pk('d')}<textarea id="dq" placeholder="প্রশ্ন"></textarea>
+  <textarea id="da" placeholder="উত্তর / ব্যাখ্যা" style="min-height:120px"></textarea><button class="btn" onclick="saveDig()">সেভ করুন</button>
+  <small>${isAdmin?'সরাসরি স্টুডেন্টদের কাছে প্রকাশিত হবে।':'অ্যাডমিন অনুমোদনের পর স্টুডেন্টরা দেখতে পাবে।'}</small></div><div id="dl"></div>`);
+  loadSubs('d');loadDig();
+}
+async function saveDig(){
+  const sid=+$('#dsub').value,q=v('#dq'),a=v('#da');
+  if(!sid)return alert('বিষয় নির্বাচন করুন');if(!q||!a)return alert('প্রশ্ন ও উত্তর দুটোই লিখুন');
+  const {error}=await sb.from('digest_items').insert({subject_id:sid,chapter_id:+$('#dch').value||null,question:q,answer:a,status:isAdmin?'approved':'pending'});
+  if(error)return alert(!isAdmin&&!subOk?'মাসিক ফি বাকি — রিচার্জ করুন':dbErr(error));
+  $('#dq').value='';$('#da').value='';alert('সেভ হয়েছে ✅');loadDig();
+}
+async function loadDig(){
+  let q=sb.from('digest_items').select('id,question,status').order('id',{ascending:false}).limit(20);
+  if(!isAdmin)q=q.eq('created_by',me.id);
+  const {data}=await q,L={pending:'অনুমোদনের অপেক্ষায়',approved:'প্রকাশিত',rejected:'বাতিল'};
+  $('#dl').innerHTML='<h3>সাম্প্রতিক</h3>'+((data||[]).map(d=>`<div class="card">${esc(d.question)}<br><small>${L[d.status]||d.status}</small><br><button class="btn2" onclick="delDig(${d.id})">🗑 মুছুন</button></div>`).join('')||'<p class="card">কিছু নেই</p>');
+}
+async function delDig(id){
+  if(!confirm('মুছে ফেলবেন?'))return;
+  const {error}=await sb.from('digest_items').delete().eq('id',id);
+  if(error)return alert(error.message);loadDig();
+}
+async function setDig(id,st){
+  const {error}=await sb.from('digest_items').update({status:st}).eq('id',id);
+  if(error)return alert(error.message);vAppr();
 }
 
 /* ---------- ADMIN: USERS ---------- */
@@ -313,11 +357,22 @@ async function vUsr(){
   const {data}=await sb.from('profiles').select('id,full_name,role,institution_name,requested_role').order('created_at',{ascending:false}).limit(100);
   U=(data||[]).sort((a,b)=>!!b.requested_role-!!a.requested_role);
   ui('usr',U.map((u,i)=>`<div class="card"><b>${esc(u.full_name||'(নাম নেই)')}</b>${u.requested_role?' <span style="color:#b45309">⏳ টিচার/প্রতিষ্ঠান হতে চায়</span>':''}<br><select id="ur${i}"><option value="student" ${u.role==='student'?'selected':''}>স্টুডেন্ট</option><option value="teacher" ${u.role==='teacher'?'selected':''}>টিচার</option><option value="admin" ${u.role==='admin'?'selected':''}>অ্যাডমিন</option></select>
-  <input id="ui${i}" placeholder="প্রতিষ্ঠানের নাম" value="${esc(u.institution_name||'')}"><button class="btn2" onclick="saveUser(${i})">সেভ</button>${u.requested_role?`<button class="btn2" onclick="approveTeacher(${i})">✅ টিচার করুন</button>`:''}</div>`).join(''));
+  <input id="ui${i}" placeholder="প্রতিষ্ঠানের নাম" value="${esc(u.institution_name||'')}"><button class="btn2" onclick="saveUser(${i})">সেভ</button><button class="btn2" onclick="grantDays(${i})">🎁 ফ্রি দিন দিন</button><button class="btn2" onclick="adjBal(${i})">💰 ব্যালেন্স সমন্বয়</button>${u.requested_role?`<button class="btn2" onclick="approveTeacher(${i})">✅ টিচার করুন</button>`:''}</div>`).join(''));
 }
 async function approveTeacher(i){
   const {error}=await sb.from('profiles').update({role:'teacher',requested_role:null}).eq('id',U[i].id);
   if(error)return alert(error.message);vUsr();
+}
+async function grantDays(i){
+  const d=+prompt('কত দিন ফ্রি অ্যাক্সেস দেবেন? (১–৩৬৫)','30');if(!d)return;
+  const {error}=await sb.rpc('admin_grant_days',{p_user:U[i].id,p_days:d});
+  alert(error?error.message:d+' দিন ফ্রি অ্যাক্সেস দেওয়া হয়েছে ✅');
+}
+async function adjBal(i){
+  const a=parseFloat(prompt('কত টাকা যোগ করবেন? (কাটতে চাইলে মাইনাস সংখ্যা, যেমন -20)','0'));if(!a)return;
+  const note=prompt('কারণ (ঐচ্ছিক):')||'অ্যাডমিন সমন্বয়';
+  const {error}=await sb.rpc('admin_adjust_balance',{p_user:U[i].id,p_amount:a,p_note:note});
+  alert(error?error.message:'ব্যালেন্স আপডেট হয়েছে ✅');
 }
 async function saveUser(i){
   const {error}=await sb.from('profiles').update({role:$('#ur'+i).value,institution_name:$('#ui'+i).value.trim()||null,requested_role:null}).eq('id',U[i].id);
@@ -331,7 +386,9 @@ async function vPay(){
   const C={};(st.data||[]).forEach(x=>C[x.key]=x.value);
   const ids=(rq.data||[]).map(r=>r.user_id),N={};
   if(ids.length){const {data:p}=await sb.from('profiles').select('id,full_name').in('id',ids);(p||[]).forEach(x=>N[x.id]=x.full_name)}
-  ui('pay',`<div class="card"><h3>পেমেন্টের তথ্য (স্টুডেন্টরা দেখবে)</h3>
+  ui('pay',`<div class="card"><h3>🎁 ফ্রি মোড</h3><small>চালু করলে সবার জন্য পরীক্ষা ও ডাইজেস্ট ফ্রি, কোনো ফি কাটা হবে না। এখন: <b>${C.free_mode==='1'?'চালু':'বন্ধ'}</b></small>
+  <button class="btn2" onclick="setFree(${C.free_mode==='1'?0:1})">${C.free_mode==='1'?'ফ্রি মোড বন্ধ করুন':'ফ্রি মোড চালু করুন'}</button></div>
+  <div class="card"><h3>পেমেন্টের তথ্য (স্টুডেন্টরা দেখবে)</h3>
   <input id="s1" placeholder="bKash নম্বর" value="${esc(C.bkash_number||'')}"><input id="s2" placeholder="Nagad নম্বর" value="${esc(C.nagad_number||'')}">
   <input id="s3" placeholder="ব্যাংকের তথ্য" value="${esc(C.bank_info||'')}"><input id="s4" placeholder="অতিরিক্ত নির্দেশনা" value="${esc(C.pay_note||'')}">
   <button class="btn" onclick="saveSettings()">সেভ করুন</button></div>
@@ -339,6 +396,11 @@ async function vPay(){
   ${(rq.data||[]).map(r=>`<div class="card"><b>৳ ${r.amount}</b> · ${esc(r.method)}<br><small>${esc(N[r.user_id]||'')} · পাঠিয়েছে: ${esc(r.sender)}<br>TrxID: <b>${esc(r.trx_id)}</b></small><br>
   <small>⚠️ আগে নিজের bKash/Nagad/ব্যাংকে TrxID ও টাকার পরিমাণ মিলিয়ে দেখুন, তারপর অনুমোদন দিন।</small><br>
   <button class="btn2" onclick="revTop(${r.id},true)">✅ অনুমোদন</button><button class="btn2" onclick="revTop(${r.id},false)">❌ বাতিল</button></div>`).join('')||'<p class="card">কোনো অনুরোধ নেই</p>'}`);
+}
+async function setFree(on){
+  if(!confirm(on?'সবার জন্য ফ্রি চালু করবেন?':'ফ্রি মোড বন্ধ করবেন? এরপর মেয়াদ শেষ হলে ফি কাটা শুরু হবে।'))return;
+  const {error}=await sb.from('app_settings').upsert({key:'free_mode',value:on?'1':'0'});
+  if(error)return alert(error.message);vPay();
 }
 async function saveSettings(){
   const rows=[['bkash_number','#s1'],['nagad_number','#s2'],['bank_info','#s3'],['pay_note','#s4']].map(([k,i])=>({key:k,value:v(i)}));
