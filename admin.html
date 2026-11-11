@@ -33,7 +33,7 @@ const show=h=>{$('#app').innerHTML=h};
 const TYPES={chapter_test:'চ্যাপ্টার টেস্ট',class_test:'ক্লাস টেস্ট',weekly:'সাপ্তাহিক',model_test:'মডেল টেস্ট',half_yearly:'অর্ধবার্ষিক',final:'বার্ষিক'};
 const CATS=[5,6,7,8,9,10,11,12].map(c=>['c'+c,'ক্লাস '+c]).concat([['ssc','SSC'],['hsc','HSC'],['admission','ভর্তি'],['job','চাকরি']]);
 const catInfo=k=>/^c\d+$/.test(k)?{category:'school',class_level:+k.slice(1)}:{category:k,class_level:null};
-let me=null,profile={},isAdmin=false,sel=new Set(),loaded=[],subOk=true,subInfo={};
+let me=null,profile={},isAdmin=false,sel=new Set(),loaded=[],known={},subOk=true,subInfo={};
 const dbErr=e=>(e.code==='42501'||/row-level security|permission denied/i.test(e.message))?'অনুমতি নেই। Supabase-এ sclzo_part5.sql চালানো হয়েছে কিনা দেখুন। ('+e.message+')':e.message;
 const money=n=>Number(n||0).toFixed(2).replace(/\.00$/,'');
 
@@ -197,9 +197,17 @@ function vExam(){
   <label><input type="checkbox" id="neg">নেগেটিভ মার্কিং</label><input id="nm" type="number" step="0.05" value="0.25" placeholder="ভুলে কাটা নম্বর">
   <small>শুরুর সময় (ফাঁকা = এখনই)</small><input id="st" type="datetime-local"><small>শেষ সময় (ফাঁকা = সীমা নেই)</small><input id="en" type="datetime-local"></div>
   <div class="card"><h3>প্রশ্ন বাছাই <span id="cnt"></span></h3>
-  <button class="btn" onclick="loadQs()">এই অধ্যায়ের প্রশ্ন দেখান</button>
+  <small>উপরে বিষয়/অধ্যায় বেছে প্রশ্ন দেখান। বিষয় বদলে আবার দেখালে আগের বাছাই থেকে যাবে (মিশ্র পরীক্ষার জন্য)।</small>
+  <button class="btn" onclick="loadQs()">এই বিষয়/অধ্যায়ের প্রশ্ন দেখান</button>
   <div class="row"><input id="rn" type="number" placeholder="র‍্যান্ডম কয়টি?"><button class="btn2" onclick="pickRand()">র‍্যান্ডম বাছাই</button></div>
-  <div id="ql"></div></div><button class="btn" onclick="makeExam()">পরীক্ষা পাবলিশ করুন</button><br><br>`);
+  <div id="ql"></div></div>
+  <div class="card"><h3>➕ নতুন প্রশ্ন লিখে যোগ করুন</h3><small>প্রশ্নটি উপরে বেছে নেওয়া বিষয়/অধ্যায়ে সেভ হবে এবং এই পরীক্ষায় নিজে থেকে যোগ হবে।${isAdmin?'':' এটা আপনার প্রাইভেট ব্যাংকে থাকবে।'}</small>
+  <textarea id="nq" placeholder="প্রশ্ন"></textarea><input id="na" placeholder="ক"><input id="nb" placeholder="খ"><input id="nc" placeholder="গ"><input id="nd" placeholder="ঘ">
+  <select id="nk"><option value="a">সঠিক: ক</option><option value="b">সঠিক: খ</option><option value="c">সঠিক: গ</option><option value="d">সঠিক: ঘ</option></select>
+  <textarea id="nx" placeholder="ব্যাখ্যা (ঐচ্ছিক)"></textarea><button class="btn2" onclick="addInlineQ()">প্রশ্ন সেভ করে পরীক্ষায় যোগ করুন</button></div>
+  <div class="card"><h3>বাছাই করা প্রশ্ন</h3><div id="chosen"></div></div>
+  <button class="btn" onclick="makeExam()">পরীক্ষা পাবলিশ করুন</button><br><br>`);
+  known={};
   loadSubs('e');
   $('#ecat').addEventListener('change',()=>{$('#neg').checked=['job','admission'].includes($('#ecat').value)});
 }
@@ -208,16 +216,32 @@ async function loadQs(){
   let q=sb.from('mcqs').select('id,question,status').eq('subject_id',sid).in('status',['approved','private','pending']).order('id').limit(300);
   const cid=+$('#ech').value;if(cid)q=q.eq('chapter_id',cid);
   const {data,error}=await q;if(error)return alert(error.message);
-  loaded=data||[];drawQs();
+  loaded=data||[];loaded.forEach(m=>known[m.id]=m.question);drawQs();
 }
 function drawQs(){
-  $('#ql').innerHTML=loaded.map(m=>`<div class="q"><input type="checkbox" ${sel.has(m.id)?'checked':''} onchange="tog(${m.id},this.checked)"><span>${esc(m.question)}${m.status!=='approved'?' <small>(প্রাইভেট)</small>':''}</span></div>`).join('')||'<p>কোনো প্রশ্ন নেই</p>';
-  $('#cnt').textContent='— বাছাই: '+sel.size+'টি';
+  $('#ql').innerHTML=loaded.map(m=>`<div class="q"><input type="checkbox" ${sel.has(m.id)?'checked':''} onchange="tog(${m.id},this.checked)"><span>${esc(m.question)}${m.status!=='approved'?' <small>(প্রাইভেট)</small>':''}</span></div>`).join('')||'<p>কোনো প্রশ্ন নেই। নিচে নতুন প্রশ্ন লিখে যোগ করতে পারেন।</p>';
+  drawChosen();
 }
-function tog(id,on){on?sel.add(id):sel.delete(id);$('#cnt').textContent='— বাছাই: '+sel.size+'টি'}
+function drawChosen(){
+  $('#cnt').textContent='— বাছাই: '+sel.size+'টি';
+  const c=$('#chosen');if(!c)return;
+  c.innerHTML=[...sel].map((id,i)=>`<div class="q"><span>${i+1}. ${esc(known[id]||'প্রশ্ন #'+id)}</span><button class="link" onclick="tog(${id},false);drawQs()">✖</button></div>`).join('')||'<small>এখনো কোনো প্রশ্ন বাছাই হয়নি</small>';
+}
+function tog(id,on){on?sel.add(id):sel.delete(id);drawChosen()}
 function pickRand(){
   const n=+$('#rn').value;if(!n||!loaded.length)return alert('আগে প্রশ্ন লোড করুন ও সংখ্যা দিন');
-  sel=new Set([...loaded].sort(()=>Math.random()-.5).slice(0,n).map(m=>m.id));drawQs();
+  [...loaded].sort(()=>Math.random()-.5).slice(0,n).forEach(m=>sel.add(m.id));drawQs();
+}
+async function addInlineQ(){
+  const sid=+$('#esub').value;if(!sid)return alert('উপরে বিষয় নির্বাচন করুন');
+  const f={question:v('#nq'),option_a:v('#na'),option_b:v('#nb'),option_c:v('#nc'),option_d:v('#nd')};
+  if(Object.values(f).some(x=>!x))return alert('প্রশ্ন ও ৪টি অপশন লিখুন');
+  const {data,error}=await sb.from('mcqs').insert({...f,subject_id:sid,chapter_id:+$('#ech').value||null,...STATUS()}).select('id').single();
+  if(error)return alert(dbErr(error));
+  const {error:e2}=await sb.from('mcq_keys').insert({mcq_id:data.id,correct_option:$('#nk').value,explanation:v('#nx')||null});
+  if(e2)return alert(dbErr(e2));
+  known[data.id]=f.question;sel.add(data.id);loaded.unshift({id:data.id,question:f.question,status:isAdmin?'approved':'private'});
+  ['nq','na','nb','nc','nd','nx'].forEach(i=>$('#'+i).value='');drawQs();
 }
 async function makeExam(){
   const ids=[...sel],title=v('#et');
@@ -234,6 +258,7 @@ async function makeExam(){
   if(error)return alert(!isAdmin&&!subOk?'মাসিক ফি বাকি — ব্যালেন্স রিচার্জ করুন, তারপর আবার চেষ্টা করুন':error.message);
   const {error:e2}=await sb.from('exam_questions').insert(ids.map((id,i)=>({exam_id:data.id,mcq_id:id,sort_order:i})));
   if(e2)return alert(e2.message);
+  if(!data.share_code||String(data.share_code).length<20)return alert('পরীক্ষা তৈরি হয়েছে, কিন্তু গোপন লিংক তৈরি হয়নি। Supabase-এ sclzo_part6.sql চালান, তারপর "আমার পরীক্ষাগুলো" থেকে লিংক নিন।');
   showLink(data.share_code,title);
 }
 
@@ -244,10 +269,15 @@ async function copyLink(c){
   try{await navigator.clipboard.writeText(shareLink(c));alert('লিংক কপি হয়েছে ✅')}
   catch(e){prompt('লিংকটি কপি করুন:',shareLink(c))}
 }
+async function shareLinkNative(c,t){
+  if(navigator.share){try{await navigator.share({title:t,text:t+' — পরীক্ষার লিংক',url:shareLink(c)});return}catch(e){return}}
+  copyLink(c);
+}
 function showLink(c,t){
   ui('res',`<div class="card"><h3>✅ পাবলিশ হয়েছে</h3><b>${esc(t)}</b>
-  <p>এই লিংক স্টুডেন্টদের দিন। লিংক খুলে লগইন করলেই পরীক্ষা পাবে। অন্য কেউ এই পরীক্ষা বা ফলাফল দেখতে পারবে না।</p>
+  <p>এই গোপন লিংক শুধু আপনার স্টুডেন্টদের দিন। লিংক খুলে লগইন করে নাম-রোল দিলেই পরীক্ষা পাবে। লিংকটি এতটাই বড় ও এলোমেলো যে অন্য প্রতিষ্ঠানের কেউ আন্দাজ করে ঢুকতে পারবে না। ফলাফলে প্রতিষ্ঠানের নাম দেখে আপনি বাইরের কাউকে চিনতে পারবেন।</p>
   <input readonly value="${shareLink(c)}" onclick="this.select()"><button class="btn" onclick="copyLink('${c}')">🔗 লিংক কপি করুন</button>
+  <button class="btn2" onclick="shareLinkNative('${c}','${esc(t).replace(/'/g,'')}')">📤 শেয়ার করুন</button>
   <button class="btn2" onclick="vRes()">আমার পরীক্ষাগুলো</button></div>`);
 }
 async function vRes(){
@@ -284,8 +314,8 @@ async function vAppr(){
   const {data}=await sb.from('mcqs').select('id,question,option_a,option_b,option_c,option_d').eq('status','pending').order('id').limit(30);
   const ids=(data||[]).map(m=>m.id),K={};
   if(ids.length){const {data:k}=await sb.from('mcq_keys').select('mcq_id,correct_option').in('mcq_id',ids);(k||[]).forEach(x=>K[x.mcq_id]=x.correct_option)}
-  const {data:dg}=await sb.from('digest_items').select('id,question,answer').eq('status','pending').order('id').limit(30);
-  const dgHtml=(dg||[]).length?'<h3>ডাইজেস্ট অনুমোদন</h3>'+dg.map(d=>`<div class="card"><b>${esc(d.question)}</b><br><small style="white-space:pre-wrap">${esc(d.answer)}</small><br><button class="btn2" onclick="setDig(${d.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setDig(${d.id},'rejected')">❌ বাতিল</button></div>`).join(''):'';
+  const {data:dg}=await sb.from('digest_items').select('id,question,answer,option_a,option_b,option_c,option_d,correct_option').eq('status','pending').order('id').limit(30);
+  const dgHtml=(dg||[]).length?'<h3>ডাইজেস্ট অনুমোদন</h3>'+dg.map(d=>`<div class="card"><b>${esc(d.question)}</b><br><small>ক) ${esc(d.option_a)} খ) ${esc(d.option_b)} গ) ${esc(d.option_c)} ঘ) ${esc(d.option_d)}<br>সঠিক: ${esc(d.correct_option||'?')}</small><br><small style="white-space:pre-wrap">${esc(d.answer)}</small><br><button class="btn2" onclick="setDig(${d.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setDig(${d.id},'rejected')">❌ বাতিল</button></div>`).join(''):'';
   ui('appr',(data||[]).map(m=>`<div class="card"><b>${esc(m.question)}</b><br><small>ক) ${esc(m.option_a)} খ) ${esc(m.option_b)} গ) ${esc(m.option_c)} ঘ) ${esc(m.option_d)}<br>সঠিক: ${esc(K[m.id]||'?')}</small><br>
   <button class="btn2" onclick="setSt(${m.id},'approved')">✅ অনুমোদন</button><button class="btn2" onclick="setSt(${m.id},'rejected')">❌ বাতিল</button></div>`).join('')+dgHtml||'<p class="card">কোনো অপেক্ষমাণ MCQ নেই</p>');
 }
@@ -323,16 +353,20 @@ async function addCh(){
 /* ---------- DIGEST (admin + teacher add, students read) ---------- */
 function vDig(){
   ui('dig',`<div class="card"><h3>ডাইজেস্টে প্রশ্ন যোগ</h3>${pk('d')}<textarea id="dq" placeholder="প্রশ্ন"></textarea>
-  <textarea id="da" placeholder="উত্তর / ব্যাখ্যা" style="min-height:120px"></textarea><button class="btn" onclick="saveDig()">সেভ করুন</button>
+  <input id="doa" placeholder="ক"><input id="dob" placeholder="খ"><input id="doc" placeholder="গ"><input id="dod" placeholder="ঘ">
+  <select id="dk"><option value="a">সঠিক: ক</option><option value="b">সঠিক: খ</option><option value="c">সঠিক: গ</option><option value="d">সঠিক: ঘ</option></select>
+  <textarea id="da" placeholder="ব্যাখ্যা / বিস্তারিত উত্তর (ঐচ্ছিক)" style="min-height:100px"></textarea><button class="btn" onclick="saveDig()">সেভ করুন</button>
   <small>${isAdmin?'সরাসরি স্টুডেন্টদের কাছে প্রকাশিত হবে।':'অ্যাডমিন অনুমোদনের পর স্টুডেন্টরা দেখতে পাবে।'}</small></div><div id="dl"></div>`);
   loadSubs('d');loadDig();
 }
 async function saveDig(){
-  const sid=+$('#dsub').value,q=v('#dq'),a=v('#da');
-  if(!sid)return alert('বিষয় নির্বাচন করুন');if(!q||!a)return alert('প্রশ্ন ও উত্তর দুটোই লিখুন');
-  const {error}=await sb.from('digest_items').insert({subject_id:sid,chapter_id:+$('#dch').value||null,question:q,answer:a,status:isAdmin?'approved':'pending'});
-  if(error)return alert(!isAdmin&&!subOk?'মাসিক ফি বাকি — রিচার্জ করুন':dbErr(error));
-  $('#dq').value='';$('#da').value='';alert('সেভ হয়েছে ✅');loadDig();
+  const sid=+$('#dsub').value,q=v('#dq'),ex=v('#da');
+  const o={option_a:v('#doa'),option_b:v('#dob'),option_c:v('#doc'),option_d:v('#dod')};
+  if(!sid)return alert('বিষয় নির্বাচন করুন');
+  if(!q||Object.values(o).some(x=>!x))return alert('প্রশ্ন ও ক, খ, গ, ঘ — চারটি অপশনই লিখুন');
+  const {error}=await sb.from('digest_items').insert({subject_id:sid,chapter_id:+$('#dch').value||null,question:q,...o,correct_option:$('#dk').value,answer:ex||null,status:isAdmin?'approved':'pending'});
+  if(error)return alert(!isAdmin&&!subOk?'মাসিক ফি বাকি — রিচার্জ করুন':dbErr(error)+' (sclzo_part6.sql চালানো হয়েছে কিনা দেখুন)');
+  ['dq','doa','dob','doc','dod','da'].forEach(i=>$('#'+i).value='');alert('সেভ হয়েছে ✅');loadDig();
 }
 async function loadDig(){
   let q=sb.from('digest_items').select('id,question,status').order('id',{ascending:false}).limit(20);
