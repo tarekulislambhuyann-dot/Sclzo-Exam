@@ -75,7 +75,7 @@ function authView(mode){
   const reg=mode==='reg';
   show(`<header>Sclzo Exam</header><main><div class="card"><h2>${reg?'নতুন অ্যাকাউন্ট':'লগইন'}</h2>
   ${reg?`<input id="nm" placeholder="আপনার নাম"><select id="ty"><option value="student">আমি স্টুডেন্ট</option><option value="teacher">আমি টিচার</option><option value="institution">আমি প্রতিষ্ঠান</option></select><select id="cl"><option value="">ক্লাস / ক্যাটাগরি</option>${[5,6,7,8,9,10,11,12].map(c=>`<option value="${c}">ক্লাস ${c}</option>`).join('')}<option value="">SSC / HSC / ভর্তি / চাকরি</option></select>`:''}
-  <input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
+  <input id="em" type="email" placeholder="ইমেইল"><input id="pw" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৮ অক্ষর)">
   <button class="btn" onclick="doAuth('${mode}')">${reg?'রেজিস্টার':'লগইন'}</button>
   <button class="link" onclick="authView('${reg?'login':'reg'}')">${reg?'আগে থেকেই অ্যাকাউন্ট আছে? লগইন':'নতুন? অ্যাকাউন্ট খুলুন'}</button></div></main>`);
 }
@@ -84,11 +84,11 @@ async function doAuth(mode){
   if(!email||!pw)return alert('ইমেইল ও পাসওয়ার্ড দিন');
   if(mode==='reg'){
     const name=$('#nm').value.trim(),cl=+$('#cl').value||null;
+    if(pw.length<8)return alert('পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের দিন');
+    try{localStorage.setItem('sclzo_reg',JSON.stringify({e:email,cl,ty:$('#ty').value}))}catch(e){}
     const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{full_name:name}}});
     if(error)return alert(error.message);
     if(!data.session)return alert('ইমেইল কনফার্ম করে তারপর লগইন করুন');
-    await sb.from('profiles').update({class_level:cl}).eq('id',data.user.id);
-    if($('#ty').value!=='student')await sb.from('profiles').update({requested_role:'teacher'}).eq('id',data.user.id);
   }else{
     const {error}=await sb.auth.signInWithPassword({email,password:pw});
     if(error)return alert(error.message);
@@ -104,6 +104,15 @@ async function boot(){
   me=session.user;
   const {data}=await sb.from('profiles').select('*').eq('id',me.id).single();
   profile=data||{};
+  try{
+    const r=JSON.parse(localStorage.getItem('sclzo_reg')||'null');
+    if(r&&r.e===me.email){
+      localStorage.removeItem('sclzo_reg');
+      if(r.cl)await sb.from('profiles').update({class_level:r.cl}).eq('id',me.id);
+      if(r.ty&&r.ty!=='student')await sb.from('profiles').update({requested_role:'teacher'}).eq('id',me.id);
+      const {data:p2}=await sb.from('profiles').select('*').eq('id',me.id).single();profile=p2||profile;
+    }
+  }catch(e){}
   await refreshSub();
   const code=(new URLSearchParams(location.search).get('exam')||'').replace(/[^A-Za-z0-9_-]/g,'');
   if(code){history.replaceState(null,'',location.pathname);return joinView(code)}
@@ -154,14 +163,18 @@ const lockCard=()=>`<div class="card"><h3>⛔ মাসিক ফি বাক�
 async function examsView(){
   show(shell('পরীক্ষা','<p>লোড হচ্ছে…</p>','exams'));
   await refreshSub();
-  const {data}=await sb.from('exams').select('id,title,exam_type,duration_minutes,institution_name,start_time,end_time,class_level').eq('status','published').order('created_at',{ascending:false}).limit(40);
+  const {data}=await sb.from('exams').select('id,title,exam_type,duration_minutes,institution_name,start_time,end_time,class_level').eq('status','published').eq('visibility','public').order('created_at',{ascending:false}).limit(40);
+  let mine=[];
+  try{const {data:ac}=await sb.from('exam_access').select('exam_id,exams(id,title,duration_minutes,institution_name,end_time)').eq('user_id',me.id).limit(30);mine=(ac||[]).map(a=>a.exams).filter(Boolean)}catch(e){}
   const now=Date.now();
   const list=(data||[]).filter(e=>(!e.end_time||new Date(e.end_time)>now)&&(e.class_level==null||e.class_level==profile.class_level));
-  show(shell('পরীক্ষা',`${S.sub.active?'':lockCard()}<div class="card"><b>এক্সাম কোড আছে?</b><input id="code" placeholder="কোড লিখুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
+  show(shell('পরীক্ষা',`${S.sub.active?'':lockCard()}<div class="card"><b>পরীক্ষার লিংক পেয়েছেন?</b><input id="code" placeholder="লিংক বা কোড এখানে পেস্ট করুন"><button class="btn" onclick="byCode()">খুলুন</button></div>
+  ${mine.length?'<h3>আমার যোগ দেওয়া পরীক্ষা</h3>'+mine.map(e=>`<button class="item" onclick="openExam(${e.id})"><b>${esc(e.title)}</b><br><small>${e.duration_minutes} মিনিট${e.institution_name?' · '+esc(e.institution_name):''}</small></button>`).join(''):''}
   ${list.length?list.map(e=>`<button class="item" onclick="openExam(${e.id})"><b>${esc(e.title)}</b><br><small>${TYPES[e.exam_type]||''} · ${e.duration_minutes} মিনিট${e.institution_name?' · '+esc(e.institution_name):''}${e.start_time?'<br>শুরু: '+new Date(e.start_time).toLocaleString('bn-BD'):''}</small></button>`).join(''):'<p class="card">এখন কোনো পরীক্ষা নেই।</p>'}`,'exams'));
 }
 function byCode(){
-  const c=$('#code').value.trim().replace(/[^A-Za-z0-9_-]/g,'');if(!c)return;
+  let c=$('#code').value.trim();const m=c.match(/[?&]exam=([A-Za-z0-9_-]+)/);if(m)c=m[1];
+  c=c.replace(/[^A-Za-z0-9_-]/g,'');if(!c)return;
   joinView(c);
 }
 function joinView(code){
@@ -245,11 +258,11 @@ async function digestChapters(i){
   ${S.dch.map((c,j)=>`<button class="item" onclick="digestList(${j})">${esc(c.name)}</button>`).join('')}`,'digest'));
 }
 async function digestList(j){
-  let q=sb.from('digest_items').select('id,question,answer').eq('subject_id',S.dsub.id).eq('status','approved').order('id').limit(100);
+  let q=sb.from('digest_items').select('id,question,answer,option_a,option_b,option_c,option_d,correct_option').eq('subject_id',S.dsub.id).eq('status','approved').order('id').limit(100);
   if(j!==null)q=q.eq('chapter_id',S.dch[j].id);
   const {data,error}=await q;if(error)return alert(error.message);
   show(shell(S.dsub.name,`<button class="link" onclick="digestChapters(S.dsubs.indexOf(S.dsub))">← ফিরে যান</button>
-  ${(data||[]).map(d=>`<details class="card"><summary>${esc(d.question)}</summary><p>${esc(d.answer)}</p></details>`).join('')||'<p class="card">এখানে এখনো কিছু যোগ হয়নি।</p>'}`,'digest'));
+  ${(data||[]).map(d=>`<details class="card"><summary>${esc(d.question)}</summary>${d.option_a?['a','b','c','d'].map(k=>`<div class="opt${k===d.correct_option?' ok':''}"><b>${BN[k]}.</b> ${esc(d['option_'+k])}${k===d.correct_option?' ✅':''}</div>`).join(''):''}${d.answer?`<p>${esc(d.answer)}</p>`:''}</details>`).join('')||'<p class="card">এখানে এখনো কিছু যোগ হয়নি।</p>'}`,'digest'));
 }
 
 /* ---------- PROFILE ---------- */
@@ -260,7 +273,7 @@ async function meView(){
   const sb_=S.sub,u=avUrl();
   const st=sb_.free?(profile.role==='admin'?'অ্যাডমিন — কোনো ফি নেই':'🎁 ফ্রি অ্যাক্সেস চালু'):(sb_.active?`✅ সাবস্ক্রিপশন চালু · শেষ: ${new Date(sb_.paid_until).toLocaleDateString('bn-BD')}`:`⛔ বন্ধ — মাসিক ফি ৳${money(sb_.fee)}, ব্যালেন্স কম`);
   show(shell('প্রোফাইল',`<div class="card" style="display:flex;gap:14px;align-items:center">
-    ${u?`<img class="av" src="${u}" alt="">`:`<div class="av">${esc((profile.full_name||me.email||'?')[0].toUpperCase())}</div>`}
+    <label style="position:relative;cursor:pointer">${u?`<img class="av" src="${u}" alt="">`:`<div class="av">${esc((profile.full_name||me.email||'?')[0].toUpperCase())}</div>`}<span style="position:absolute;right:-2px;bottom:-2px;background:#4338ca;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:14px">📷</span><input type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="quickAvatar(this)"></label>
     <div><b>${esc(profile.full_name||me.email)}</b><br><small>${esc(me.email)}</small><br><span class="bdg">${ROLE[profile.role]||'স্টুডেন্ট'}</span>${profile.class_level?` <span class="bdg">ক্লাস ${profile.class_level}</span>`:''}</div></div>
   <div class="wal"><small>আমার ব্যালেন্স</small><p class="big">৳ ${money(sb_.balance)}</p><small>${st}</small>
     <div class="row" style="margin-top:10px"><button class="btn2" onclick="topupView()">💰 রিচার্জ</button><button class="btn2" onclick="editView()">✏️ প্রোফাইল এডিট</button></div></div>
@@ -287,6 +300,17 @@ function compressImg(file){
     };
     img.onerror=()=>rej(new Error('ছবি খোলা যায়নি'));img.src=url;
   });
+}
+async function quickAvatar(inp){
+  const f=inp.files[0];if(!f)return;
+  try{
+    const blob=await compressImg(f);
+    const {error:ue}=await sb.storage.from('avatars').upload(me.id+'/avatar.jpg',blob,{upsert:true,contentType:'image/jpeg'});
+    if(ue)return alert('ছবি আপলোড হয়নি: '+ue.message);
+    const v=Date.now(),{error}=await sb.from('profiles').update({avatar_v:v}).eq('id',me.id);
+    if(error)return alert(error.message);
+    profile.avatar_v=v;meView();
+  }catch(e){alert(e.message)}
 }
 async function saveProfile(){
   const name=$('#en').value.trim(),cl=+$('#pc').value||null;
